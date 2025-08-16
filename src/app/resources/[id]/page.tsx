@@ -1,11 +1,12 @@
 import { createClientServer } from '@/lib/supabase-server';
-import Link from 'next/link';
+import VoteButtons from '@/components/VoteButtons';
+import ReviewForm from '@/components/ReviewForm';
+import CommentsSection from '@/components/CommentsSection';
 
-type PageProps = { searchParams?: { sort?: string } };
-
-type ResourceRow = {
+type Resource = {
   id: number;
   title: string;
+  description: string | null;
   resource_type: string;
   provider: string | null;
   affiliate_link: string | null;
@@ -14,100 +15,115 @@ type ResourceRow = {
   created_at: string;
 };
 
-type VoteRow = {
-  resource_id: number | null;
-  vote: -1 | 1;
+type Review = {
+  id: number;
+  rating: number;
+  body: string | null;
   created_at: string;
 };
 
-export default async function ResourcesPage({ searchParams }: PageProps) {
-  const supabase = await createClientServer();
-  const sort = (searchParams?.sort ?? '').toLowerCase(); // 'top' | 'trending' | ''
+type VoteOnly = { vote: -1 | 1 };
 
-  const [resRes, votesRes] = await Promise.all([
+export default async function ResourceDetail({ params }: { params: { id: string } }) {
+  const supabase = await createClientServer();
+  const rid = Number(params.id);
+
+  // Fetch resource, its reviews, and its vote rows in parallel
+  const [resourceRes, reviewsRes, votesRes] = await Promise.all([
+    supabase.from('resources').select('*').eq('id', rid).single(),
     supabase
-      .from('resources')
-      .select('id, title, resource_type, provider, affiliate_link, website, is_free, created_at')
-      .order('created_at', { ascending: false })
-      .limit(100),
+      .from('reviews')
+      .select('id, rating, body, created_at')
+      .eq('resource_id', rid)
+      .order('created_at', { ascending: false }),
     supabase
       .from('votes')
-      .select('resource_id, vote, created_at')
-      .eq('target_type', 'resource'),
+      .select('vote')
+      .eq('target_type', 'resource')
+      .eq('resource_id', rid),
   ]);
 
-  // Narrow types from the SDK response
-  const resources = (resRes.data ?? []) as ResourceRow[];
-  const votes = (votesRes.data ?? []) as VoteRow[];
+  const resource = resourceRes.data as Resource | null;
+  const reviews = (reviewsRes.data ?? []) as Review[];
+  const voteRows = (votesRes.data ?? []) as VoteOnly[];
 
-  const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  if (!resource) return <main className="p-6">Resource not found.</main>;
 
-  const scoreAll = new Map<number, number>();
-  const score7d = new Map<number, number>();
+  // Lifetime score for this resource
+  const score = voteRows.reduce((s, v) => s + Number(v.vote), 0);
 
-  for (const v of votes) {
-    if (v.resource_id == null) continue;
-    const rid = v.resource_id;
-    const val = Number(v.vote);
-    scoreAll.set(rid, (scoreAll.get(rid) ?? 0) + val);
-    if (new Date(v.created_at).getTime() >= now - sevenDaysMs) {
-      score7d.set(rid, (score7d.get(rid) ?? 0) + val);
-    }
-  }
-
-  const items = resources.map((r) => ({
-    ...r,
-    scoreAll: scoreAll.get(r.id) ?? 0,
-    score7d: score7d.get(r.id) ?? 0,
-  }));
-
-  if (sort === 'top') {
-    items.sort((a, b) => b.scoreAll - a.scoreAll);
-  } else if (sort === 'trending') {
-    items.sort((a, b) => b.score7d - a.score7d);
-  }
+  // Average rating
+  const avg =
+    reviews.length > 0
+      ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+      : '—';
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Resources</h1>
-        <div className="flex gap-2 text-sm">
-          <Link href="/resources" className="rounded border px-2 py-1">Newest</Link>
-          <Link href="/resources?sort=top" className="rounded border px-2 py-1">Top</Link>
-          <Link href="/resources?sort=trending" className="rounded border px-2 py-1">Trending</Link>
+    <main className="mx-auto max-w-3xl space-y-8 p-6">
+      {/* Header with affiliate-first links and vote buttons */}
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold">{resource.title}</h1>
+          {resource.description && (
+            <p className="text-gray-700">{resource.description}</p>
+          )}
+          <p className="text-sm text-gray-500">
+            Type: {resource.resource_type} • Provider:{' '}
+            {resource.provider ?? 'Independent'} {resource.is_free ? '• Free' : ''}
+          </p>
+          <div className="flex gap-2">
+            {resource.affiliate_link ? (
+              <a
+                className="rounded-md border px-3 py-2"
+                href={resource.affiliate_link}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Visit (Affiliate)
+              </a>
+            ) : resource.website ? (
+              <a
+                className="rounded-md border px-3 py-2"
+                href={resource.website}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Visit
+              </a>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <ul className="space-y-3">
-        {items.map((r) => (
-          <li key={r.id} className="rounded-lg border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{r.title}</h2>
-                <p className="text-sm text-gray-500">
-                  {r.resource_type} • {r.provider ?? 'Independent'} {r.is_free ? ' • Free' : ''}
-                </p>
-                <p className="mt-1 text-xs text-gray-400">
-                  Score: {r.scoreAll} (7d: {r.score7d})
-                </p>
+        {/* Vote buttons with initial score */}
+        <VoteButtons targetType="resource" resourceId={rid} initialScore={score} />
+      </header>
+
+      {/* Reviews list */}
+      <section>
+        <h2 className="text-xl font-semibold">Reviews (avg {avg})</h2>
+        <ul className="mt-3 space-y-3">
+          {reviews.map((rev) => (
+            <li key={rev.id} className="rounded-md border p-3">
+              <div className="text-sm">
+                Rating: {'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}
               </div>
-              <div className="flex gap-2">
-                {r.affiliate_link ? (
-                  <a className="rounded-md border px-3 py-2" href={r.affiliate_link} target="_blank" rel="noopener noreferrer">
-                    Visit (Affiliate)
-                  </a>
-                ) : r.website ? (
-                  <a className="rounded-md border px-3 py-2" href={r.website} target="_blank" rel="noopener noreferrer">
-                    Visit
-                  </a>
-                ) : null}
-                <Link className="rounded-md border px-3 py-2" href={`/resources/${r.id}`}>Details</Link>
+              {rev.body && <p className="mt-1 text-gray-700">{rev.body}</p>}
+              <div className="mt-1 text-xs text-gray-400">
+                {new Date(rev.created_at).toLocaleString()}
               </div>
-            </div>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+          {reviews.length === 0 && (
+            <li className="text-gray-500">No reviews yet.</li>
+          )}
+        </ul>
+      </section>
+
+      {/* Write a review */}
+      <ReviewForm resourceId={rid} />
+
+      {/* NEW: Nested comments thread */}
+      <CommentsSection resourceId={rid} />
     </main>
   );
 }
