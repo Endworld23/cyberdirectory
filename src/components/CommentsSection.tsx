@@ -1,5 +1,6 @@
 import { createClientServer } from '@/lib/supabase-server';
-import ReplyForm from './ReplyForm';
+import ReplyForm from './ReplyForm';            // replies to existing comments
+import UnifiedComposer from './UnifiedComposer'; // single top composer
 
 type CommentRow = {
   id: number;
@@ -25,7 +26,7 @@ function buildTree(rows: CommentRow[]): TreeNode[] {
     }
   }
 
-  // newest-first at each level
+  // newest first per level
   const sortDesc = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
     nodes.forEach((n) => sortDesc(n.children));
@@ -85,8 +86,10 @@ export default async function CommentsSection({ resourceId }: { resourceId: numb
   return (
     <section className="space-y-3">
       <h2 className="text-xl font-semibold">Discussion</h2>
-      {/* top-level composer */}
-      <ReplyForm resourceId={resourceId} />
+
+      {/* unified composer (review + discussion in one box) */}
+      <UnifiedComposer resourceId={resourceId} />
+
       <ul className="mt-2">
         {tree.length === 0 && <li className="text-gray-500">No comments yet.</li>}
         {tree.map((n) => (
