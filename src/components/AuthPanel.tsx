@@ -1,18 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { createClientBrowser } from '@/lib/supabase-browser'; // ✅ use the browser helper
+import { useEffect, useMemo, useState } from 'react';
+import { createClientBrowser } from '@/lib/supabase-browser';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 
 export default function AuthPanel() {
-  const [supabase] = useState(() => createClientBrowser()); // ✅ sync instance
+  // Create a single Supabase client for this component
+  const supabase = useMemo(() => createClientBrowser(), []);
+
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
       setEmail(data.user?.email ?? null);
-    });
+    })();
   }, [supabase]);
 
   if (email) {
@@ -33,12 +36,17 @@ export default function AuthPanel() {
 
   return (
     <div className="max-w-md">
-      {/* Add Google/Facebook later */}
       <Auth
         supabaseClient={supabase}
-        providers={[]}
+        providers={['google']} // ← enable Google SSO
         appearance={{ theme: ThemeSupa }}
-        redirectTo={typeof window !== 'undefined' ? window.location.origin : ''}
+        // If you enabled /auth/callback in your Supabase OAuth redirect URLs,
+        // this is the recommended redirect:
+        redirectTo={
+          typeof window !== 'undefined'
+            ? `${window.location.origin}/auth/callback`
+            : ''
+        }
       />
     </div>
   );

@@ -2,6 +2,8 @@ import { createClientServer } from '@/lib/supabase-server';
 import VoteButtons from '@/components/VoteButtons';
 import CommentsSection from '@/components/CommentsSection';
 
+/* ------------------ Types ------------------ */
+
 type Resource = {
   id: number;
   title: string;
@@ -23,9 +25,55 @@ type Review = {
 
 type VoteOnly = { vote: -1 | 1 };
 
+/* ------------------ Metadata ------------------ */
+
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const supabase = await createClientServer();
+  const rid = Number(params.id);
+  if (!Number.isFinite(rid)) {
+    return {
+      title: 'Resource — Cybersecurity Directory',
+      description:
+        'Explore resources in the Cybersecurity Directory. Reviews, discussion, and links.',
+    };
+  }
+
+  const { data: resource } = await supabase
+    .from('resources')
+    .select('title, description, provider, resource_type')
+    .eq('id', rid)
+    .single();
+
+  const title = resource?.title
+    ? `${resource.title} — Cybersecurity Directory`
+    : 'Resource — Cybersecurity Directory';
+
+  const description =
+    resource?.description ||
+    `Explore ${resource?.title ?? 'this resource'} in the Cybersecurity Directory. Reviews, discussion, and links.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+  };
+}
+
+/* ------------------ Page ------------------ */
+
 export default async function ResourceDetail({ params }: { params: { id: string } }) {
   const supabase = await createClientServer();
   const rid = Number(params.id);
+  if (!Number.isFinite(rid)) return <main className="p-6">Invalid resource id.</main>;
 
   const [resourceRes, reviewsRes, votesRes] = await Promise.all([
     supabase.from('resources').select('*').eq('id', rid).single(),
@@ -47,7 +95,10 @@ export default async function ResourceDetail({ params }: { params: { id: string 
 
   if (!resource) return <main className="p-6">Resource not found.</main>;
 
+  // Lifetime score
   const score = voteRows.reduce((s, v) => s + Number(v.vote), 0);
+
+  // Average rating
   const avg =
     reviews.length > 0
       ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
@@ -65,35 +116,51 @@ export default async function ResourceDetail({ params }: { params: { id: string 
           </p>
           <div className="flex gap-2">
             {resource.affiliate_link ? (
-              <a className="rounded-md border px-3 py-2" href={resource.affiliate_link} target="_blank" rel="noopener noreferrer">
+              <a
+                className="rounded-md border px-3 py-2"
+                href={resource.affiliate_link}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Visit (Affiliate)
               </a>
             ) : resource.website ? (
-              <a className="rounded-md border px-3 py-2" href={resource.website} target="_blank" rel="noopener noreferrer">
+              <a
+                className="rounded-md border px-3 py-2"
+                href={resource.website}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Visit
               </a>
             ) : null}
           </div>
         </div>
+
         <VoteButtons targetType="resource" resourceId={rid} initialScore={score} />
       </header>
 
-      {/* Show average + recent reviews */}
+      {/* Reviews snapshot */}
       <section>
         <h2 className="text-xl font-semibold">Reviews (avg {avg})</h2>
         <ul className="mt-3 space-y-3">
           {reviews.map((rev) => (
             <li key={rev.id} className="rounded-md border p-3">
-              <div className="text-sm">Rating: {'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}</div>
+              <div className="text-sm">
+                Rating: {'★'.repeat(rev.rating)}
+                {'☆'.repeat(5 - rev.rating)}
+              </div>
               {rev.body && <p className="mt-1 text-gray-700">{rev.body}</p>}
-              <div className="mt-1 text-xs text-gray-400">{new Date(rev.created_at).toLocaleString()}</div>
+              <div className="mt-1 text-xs text-gray-400">
+                {new Date(rev.created_at).toLocaleString()}
+              </div>
             </li>
           ))}
           {reviews.length === 0 && <li className="text-gray-500">No reviews yet.</li>}
         </ul>
       </section>
 
-      {/* One unified box + threaded discussion */}
+      {/* Unified composer + threaded discussion */}
       <CommentsSection resourceId={rid} />
     </main>
   );
