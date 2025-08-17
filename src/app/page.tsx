@@ -1,4 +1,5 @@
 // src/app/page.tsx
+export const dynamic = 'force-dynamic';
 import AuthPanel from '@/components/AuthPanel';
 
 
