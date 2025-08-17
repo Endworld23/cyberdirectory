@@ -27,9 +27,10 @@ type VoteOnly = { vote: -1 | 1 };
 
 /* ------------------ Metadata ------------------ */
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // 👈 await params (Next 15 type)
   const supabase = await createClientServer();
-  const rid = Number(params.id);
+  const rid = Number(id);
   if (!Number.isFinite(rid)) {
     return {
       title: 'Resource — Cybersecurity Directory',
@@ -60,19 +61,15 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
       description,
       type: 'article',
     },
-    twitter: {
-      card: 'summary',
-      title,
-      description,
-    },
   };
 }
 
 /* ------------------ Page ------------------ */
 
-export default async function ResourceDetail({ params }: { params: { id: string } }) {
+export default async function ResourceDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // 👈 await params (Next 15 type)
   const supabase = await createClientServer();
-  const rid = Number(params.id);
+  const rid = Number(id);
   if (!Number.isFinite(rid)) return <main className="p-6">Invalid resource id.</main>;
 
   const [resourceRes, reviewsRes, votesRes] = await Promise.all([
@@ -103,6 +100,30 @@ export default async function ResourceDetail({ params }: { params: { id: string 
     reviews.length > 0
       ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
       : '—';
+
+  // JSON-LD payload
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type':
+      resource.resource_type === 'course'
+        ? 'Course'
+        : resource.resource_type === 'platform' || resource.resource_type === 'tool'
+        ? 'SoftwareApplication'
+        : 'CreativeWork',
+    name: resource.title,
+    description: resource.description ?? undefined,
+    provider: resource.provider ? { '@type': 'Organization', name: resource.provider } : undefined,
+    url: resource.affiliate_link || resource.website || undefined,
+    aggregateRating: reviews.length
+      ? {
+          '@type': 'AggregateRating',
+          ratingValue: (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1),
+          reviewCount: reviews.length,
+          bestRating: 5,
+          worstRating: 1,
+        }
+      : undefined,
+  };
 
   return (
     <main className="mx-auto max-w-3xl space-y-8 p-6">
@@ -151,9 +172,7 @@ export default async function ResourceDetail({ params }: { params: { id: string 
                 {'☆'.repeat(5 - rev.rating)}
               </div>
               {rev.body && <p className="mt-1 text-gray-700">{rev.body}</p>}
-              <div className="mt-1 text-xs text-gray-400">
-                {new Date(rev.created_at).toLocaleString()}
-              </div>
+              <div className="mt-1 text-xs text-gray-400">{new Date(rev.created_at).toLocaleString()}</div>
             </li>
           ))}
           {reviews.length === 0 && <li className="text-gray-500">No reviews yet.</li>}
@@ -162,6 +181,13 @@ export default async function ResourceDetail({ params }: { params: { id: string 
 
       {/* Unified composer + threaded discussion */}
       <CommentsSection resourceId={rid} />
+
+      {/* JSON-LD for better Google results */}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
     </main>
   );
 }

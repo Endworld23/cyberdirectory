@@ -17,9 +17,9 @@ async function isAdmin(): Promise<boolean> {
   return prof?.role === 'admin';
 }
 
-/* ---------------------- Server actions ---------------------- */
+/* ---------------------- Server actions (NOT EXPORTED) ---------------------- */
 
-export async function approveSubmission(formData: FormData): Promise<void> {
+async function approveSubmission(formData: FormData): Promise<void> {
   'use server';
   if (!(await isAdmin())) return;
 
@@ -40,7 +40,7 @@ export async function approveSubmission(formData: FormData): Promise<void> {
   await supabase.from('resources').insert({
     title: sub.title,
     resource_type: sub.resource_type,
-    provider: null, // optional: add a provider field to submissions later
+    provider: null,
     website: sub.url,
     affiliate_link: sub.affiliate_link,
     description: sub.description,
@@ -54,7 +54,7 @@ export async function approveSubmission(formData: FormData): Promise<void> {
   revalidatePath('/admin/submissions');
 }
 
-export async function rejectSubmission(formData: FormData): Promise<void> {
+async function rejectSubmission(formData: FormData): Promise<void> {
   'use server';
   if (!(await isAdmin())) return;
 
