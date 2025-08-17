@@ -24,20 +24,13 @@ async function submitResource(formData: FormData) {
   const affiliate_link = (String(formData.get('affiliate_link') ?? '').trim() || null) as string | null;
   const description = (String(formData.get('description') ?? '').trim() || null) as string | null;
 
-  if (!title || !url || !resource_type) {
-    // Nothing fancy—just bail; the UI won’t see this directly.
-    return;
-  }
+  if (!title || !url || !resource_type) return;
 
-  // If you want to require login, uncomment this block:
-  // const { data: { user } } = await supabase.auth.getUser();
-  // if (!user) {
-  //   redirect('/login'); // require auth
-  // }
+  // Get current user — if logged in, attach their id
+  const { data: { user } } = await supabase.auth.getUser();
 
-  // Insert submission (RLS policy allows insert)
   await supabase.from('submissions').insert({
-    // submitter_id: user?.id ?? null, // uncomment if requiring auth above
+    submitter_id: user?.id ?? null,   // 👈 this fixes the FK constraint
     title,
     url,
     resource_type,
