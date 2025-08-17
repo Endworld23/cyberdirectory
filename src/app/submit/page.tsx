@@ -1,115 +1,127 @@
-'use client';
+// app/submit/page.tsx
 export const dynamic = 'force-dynamic';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientBrowser } from '@/lib/supabase-browser';
 
-type Form = {
-  title: string;
-  url: string;
-  resource_type: 'course' | 'tool' | 'platform' | 'cert' | 'resource';
-  provider: string;
-  affiliate_link?: string;
-  description?: string;
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { createClientServer } from '@/lib/supabase-server';
+
+// Optional: static metadata so build never touches Supabase here
+export const metadata = {
+  title: 'Submit a Resource — Cybersecurity Directory',
+  description: 'Share a cybersecurity resource with the community.',
 };
 
-const TYPES: Form['resource_type'][] = ['course','tool','platform','cert','resource'];
+// ---- Server Action ----
+async function submitResource(formData: FormData) {
+  'use server';
 
-export default function SubmitPage() {
-  const supabase = createClientBrowser();
-  const router = useRouter();
-  const [form, setForm] = useState<Form>({
-    title: '',
-    url: '',
-    resource_type: 'tool',
-    provider: '',
-    affiliate_link: '',
-    description: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<{ok?: string; err?: string} | null>(null);
+  // Create Supabase client at REQUEST time (not module top-level)
+  const supabase = await createClientServer();
 
-  const onChange = (k: keyof Form, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+  const title = String(formData.get('title') ?? '').trim();
+  const url = String(formData.get('url') ?? '').trim();
+  const resource_type = String(formData.get('resource_type') ?? '').trim();
+  const affiliate_link = (String(formData.get('affiliate_link') ?? '').trim() || null) as string | null;
+  const description = (String(formData.get('description') ?? '').trim() || null) as string | null;
 
-  async function submit() {
-    setMsg(null);
-    if (!form.title.trim() || !form.url.trim()) {
-      setMsg({ err: 'Title and URL are required.' });
-      return;
-    }
-    setLoading(true);
-
-    const { data: u } = await supabase.auth.getUser();
-    if (!u?.user) {
-      setLoading(false);
-      setMsg({ err: 'Please sign in to submit.' });
-      return;
-    }
-
-    const { error } = await supabase.from('submissions').insert({
-      submitter_id: u.user.id,
-      title: form.title.trim(),
-      url: form.url.trim(),
-      resource_type: form.resource_type,
-      description: form.description?.trim() || null,
-      affiliate_link: form.affiliate_link?.trim() || null,
-      status: 'pending',
-    });
-
-    if (error) setMsg({ err: error.message });
-    else {
-      setMsg({ ok: 'Thanks! Your submission is pending review.' });
-      setForm({ title: '', url: '', resource_type: 'tool', provider: '', affiliate_link: '', description: '' });
-      router.push('/resources'); // optional redirect
-    }
-    setLoading(false);
+  if (!title || !url || !resource_type) {
+    // Nothing fancy—just bail; the UI won’t see this directly.
+    return;
   }
 
+  // If you want to require login, uncomment this block:
+  // const { data: { user } } = await supabase.auth.getUser();
+  // if (!user) {
+  //   redirect('/login'); // require auth
+  // }
+
+  // Insert submission (RLS policy allows insert)
+  await supabase.from('submissions').insert({
+    // submitter_id: user?.id ?? null, // uncomment if requiring auth above
+    title,
+    url,
+    resource_type,
+    affiliate_link,
+    description,
+    status: 'pending',
+  });
+
+  // Refresh listings if needed
+  revalidatePath('/resources');
+
+  // Redirect to resources (or a thank-you page)
+  redirect('/resources');
+}
+
+export default async function SubmitPage() {
+  // Server component only renders a form; no Supabase calls at render
   return (
     <main className="mx-auto max-w-2xl p-6">
       <h1 className="mb-4 text-2xl font-bold">Submit a resource</h1>
-      <div className="space-y-3 rounded-lg border p-4">
+
+      <form action={submitResource} className="space-y-3 rounded-lg border p-4">
         <div>
           <label className="text-sm">Title *</label>
-          <input className="mt-1 w-full rounded-md border px-3 py-2" value={form.title}
-            onChange={(e) => onChange('title', e.target.value)} />
+          <input
+            name="title"
+            className="mt-1 w-full rounded-md border px-3 py-2"
+            required
+          />
         </div>
 
         <div>
           <label className="text-sm">URL *</label>
-          <input className="mt-1 w-full rounded-md border px-3 py-2" value={form.url}
-            onChange={(e) => onChange('url', e.target.value)} placeholder="https://…" />
+          <input
+            name="url"
+            type="url"
+            placeholder="https://…"
+            className="mt-1 w-full rounded-md border px-3 py-2"
+            required
+          />
         </div>
 
         <div>
           <label className="text-sm">Type</label>
-          <select className="mt-1 rounded-md border px-3 py-2"
-            value={form.resource_type}
-            onChange={(e) => onChange('resource_type', e.target.value as Form['resource_type'])}>
-            {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          <select
+            name="resource_type"
+            className="mt-1 rounded-md border px-3 py-2"
+            defaultValue="tool"
+            required
+          >
+            <option value="course">course</option>
+            <option value="tool">tool</option>
+            <option value="platform">platform</option>
+            <option value="cert">cert</option>
+            <option value="resource">resource</option>
           </select>
         </div>
 
         <div>
           <label className="text-sm">Affiliate link (optional)</label>
-          <input className="mt-1 w-full rounded-md border px-3 py-2" value={form.affiliate_link}
-            onChange={(e) => onChange('affiliate_link', e.target.value)} placeholder="https://…?ref=you" />
+          <input
+            name="affiliate_link"
+            placeholder="https://…?ref=you"
+            className="mt-1 w-full rounded-md border px-3 py-2"
+          />
         </div>
 
         <div>
           <label className="text-sm">Description (optional)</label>
-          <textarea className="mt-1 w-full rounded-md border px-3 py-2" rows={3} value={form.description}
-            onChange={(e) => onChange('description', e.target.value)} />
+          <textarea
+            name="description"
+            rows={3}
+            className="mt-1 w-full rounded-md border px-3 py-2"
+          />
         </div>
 
-        <button className="rounded-md border px-3 py-2" disabled={loading} onClick={submit}>
-          {loading ? 'Submitting…' : 'Submit for review'}
+        <button type="submit" className="rounded-md border px-3 py-2">
+          Submit for review
         </button>
 
-        {msg?.ok && <p className="text-green-600">{msg.ok}</p>}
-        {msg?.err && <p className="text-red-600">{msg.err}</p>}
-        <p className="text-xs text-gray-500">Submissions are reviewed by moderators. Approved links appear in the directory.</p>
-      </div>
+        <p className="text-xs text-gray-500">
+          Submissions are reviewed by moderators. Approved links appear in the directory.
+        </p>
+      </form>
     </main>
   );
 }
