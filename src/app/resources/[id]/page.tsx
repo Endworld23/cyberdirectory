@@ -1,3 +1,5 @@
+// app/resources/[id]/page.tsx
+import type { Metadata } from 'next';
 import { createClientServer } from '@/lib/supabase-server';
 import VoteButtons from '@/components/VoteButtons';
 import CommentsSection from '@/components/CommentsSection';
@@ -27,7 +29,9 @@ type VoteOnly = { vote: -1 | 1 };
 
 /* ------------------ Metadata ------------------ */
 
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+export async function generateMetadata(
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Metadata> {
   const { id } = await params; // 👈 await params (Next 15 type)
   const supabase = await createClientServer();
   const rid = Number(id);
@@ -36,6 +40,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       title: 'Resource — Cybersecurity Directory',
       description:
         'Explore resources in the Cybersecurity Directory. Reviews, discussion, and links.',
+      openGraph: {
+        title: 'Resource — Cybersecurity Directory',
+        description:
+          'Explore resources in the Cybersecurity Directory. Reviews, discussion, and links.',
+        type: 'article',
+      },
     };
   }
 
@@ -66,7 +76,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 /* ------------------ Page ------------------ */
 
-export default async function ResourceDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function ResourceDetail(
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { id } = await params; // 👈 await params (Next 15 type)
   const supabase = await createClientServer();
   const rid = Number(id);
@@ -172,7 +184,9 @@ export default async function ResourceDetail({ params }: { params: Promise<{ id:
                 {'☆'.repeat(5 - rev.rating)}
               </div>
               {rev.body && <p className="mt-1 text-gray-700">{rev.body}</p>}
-              <div className="mt-1 text-xs text-gray-400">{new Date(rev.created_at).toLocaleString()}</div>
+              <div className="mt-1 text-xs text-gray-400">
+                {new Date(rev.created_at).toLocaleString()}
+              </div>
             </li>
           ))}
           {reviews.length === 0 && <li className="text-gray-500">No reviews yet.</li>}
