@@ -1,23 +1,41 @@
-import { createClientServer } from '@/lib/supabase-server';
+// app/admin/submissions/page.tsx
+export const dynamic = 'force-dynamic';
+
 import { revalidatePath } from 'next/cache';
+import { createClientServer } from '@/lib/supabase-server';
 
 /* ---------------------- Helpers ---------------------- */
 
 async function isAdmin(): Promise<boolean> {
   const supabase = await createClientServer();
-  const { data: u } = await supabase.auth.getUser();
-  if (!u?.user) return false;
+  const { data: userRes } = await supabase.auth.getUser();
+  const user = userRes?.user;
+  if (!user) return false;
 
-  const { data: prof } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', u.user.id)
-    .single();
+  // 1) Preferred: check `public.admins` allow-list
+  const { data: adminRow, error: adminErr } = await supabase
+    .from('admins')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
 
-  return prof?.role === 'admin';
+  if (adminRow) return true;
+
+  // If admins table doesn't exist yet (42P01) or is empty, fall back to profiles.role
+  if (adminErr && (adminErr.code === '42P01' || /relation .* does not exist/i.test(adminErr.message))) {
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return prof?.role === 'admin';
+  }
+
+  return false;
 }
 
-/* ---------------------- Server actions (NOT EXPORTED) ---------------------- */
+/* ---------------------- Server actions ---------------------- */
 
 async function approveSubmission(formData: FormData): Promise<void> {
   'use server';
@@ -37,7 +55,7 @@ async function approveSubmission(formData: FormData): Promise<void> {
   if (!sub) return;
 
   // 2) Create resource (affiliate-first)
-  await supabase.from('resources').insert({
+  const { error: insertErr } = await supabase.from('resources').insert({
     title: sub.title,
     resource_type: sub.resource_type,
     provider: null,
@@ -46,6 +64,7 @@ async function approveSubmission(formData: FormData): Promise<void> {
     description: sub.description,
     is_free: null,
   });
+  if (insertErr) return;
 
   // 3) Mark as approved
   await supabase.from('submissions').update({ status: 'approved' }).eq('id', id);
@@ -62,7 +81,6 @@ async function rejectSubmission(formData: FormData): Promise<void> {
   if (!id) return;
 
   const supabase = await createClientServer();
-
   await supabase.from('submissions').update({ status: 'rejected' }).eq('id', id);
 
   revalidatePath('/admin/submissions');
