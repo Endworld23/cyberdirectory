@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";   // ✅ import Link
+import Link from "next/link";
 import "./globals.css";
+import AuthButtons from "@/components/AuthButtons"; // ⬅️ add
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -17,7 +18,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}>
         <header className="border-b">
           <nav className="mx-auto flex max-w-5xl items-center justify-between p-4">
-            {/* ✅ Use Link instead of <a> */}
             <Link href="/" className="text-base font-semibold">
               Cybersecurity Directory
             </Link>
@@ -26,9 +26,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/resources" className="hover:underline">
                 Resources
               </Link>
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="hover:underline">
+              <a
+                href="https://github.com/Endworld23/cyberdirectory"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
                 GitHub
               </a>
+
+              {/* ⬇️ Sign in / Sign out buttons */}
+              <AuthButtons />
             </div>
           </nav>
         </header>
