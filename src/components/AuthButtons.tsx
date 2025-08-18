@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useFormStatus } from 'react-dom';
 import { createClientBrowser } from '@/lib/supabase-browser';
 import { signOutAction } from '@/app/actions/auth';
@@ -21,7 +22,6 @@ export default function AuthButtons() {
   const router = useRouter();
   const supabase = createClientBrowser();
   const [user, setUser] = useState<UserLite | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -30,10 +30,13 @@ export default function AuthButtons() {
       const { data } = await supabase.auth.getUser();
       setUser(data.user ?? null);
 
-      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
         setUser(session?.user ?? null);
-        // Force a re-render with fresh server cookies
-        router.refresh();
+
+        // Only refresh UI on meaningful events to avoid loops
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+          router.refresh();
+        }
       });
 
       unsub = () => sub.subscription.unsubscribe();
@@ -43,35 +46,26 @@ export default function AuthButtons() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function signInWithGoogle() {
-    setBusy(true);
-    const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: origin ? `${origin}/auth/callback` : undefined },
-    });
-    // Supabase redirects; no manual UI update here
-  }
-
   if (user) {
-    // Prefer server-side sign out, but also nudge the UI immediately after submit
     return (
-      <form
-        action={async () => {
-          await signOutAction();
-          // If the redirect is intercepted by the app router, ensure UI updates:
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-600 hidden sm:inline">{user.email}</span>
+        <form action={async () => {
+          await signOutAction();   // server-clears cookies & redirects to /
+          // client nudge in case app router intercepts
           router.push('/');
           router.refresh();
-        }}
-      >
-        <SubmitButton>Sign out</SubmitButton>
-      </form>
+        }}>
+          <SubmitButton>Sign out</SubmitButton>
+        </form>
+      </div>
     );
   }
 
+  // Just “Sign in” (no Google label) → goes to our /login page
   return (
-    <button onClick={signInWithGoogle} className="rounded-md border px-3 py-2" disabled={busy}>
-      {busy ? 'Signing in…' : 'Sign in with Google'}
-    </button>
+    <Link href="/login" className="rounded-md border px-3 py-2">
+      Sign in
+    </Link>
   );
 }

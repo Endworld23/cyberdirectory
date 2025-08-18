@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server';
+import { createClientServer } from '@/lib/supabase-server';
 
-// If you later need to exchange code for session on server, you can.
-// For now, Supabase handles the session cookies client-side too.
-// We just bounce to home to re-render with a fresh session.
-export async function GET() {
-  return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_SITE_URL || 'https://cyberdirectory.vercel.app'));
+export async function GET(request: Request) {
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get('code');
+  const next = searchParams.get('next') || '/';
+
+  const supabase = await createClientServer();
+
+  if (code) {
+    // Exchange the code for a session and persist via server cookies
+    await supabase.auth.exchangeCodeForSession(code);
+  }
+
+  // Redirect back to the app (prefer NEXT_PUBLIC_SITE_URL if set)
+  const site =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.SITE_URL ||
+    origin;
+
+  return NextResponse.redirect(new URL(next, site));
 }
