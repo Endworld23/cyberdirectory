@@ -9,11 +9,12 @@ export const createClientServer = async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        // You can add set/delete later if needed
+       cookies: {
+        get: (name) => cookieStore.get(name)?.value,
+        set: (name, value, options) =>
+          cookieStore.set({ name, value, ...options }),
+        remove: (name, options) =>
+          cookieStore.set({ name, value: '', ...options, expires: new Date(0) }),
       },
     }
   );
