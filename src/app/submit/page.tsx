@@ -1,120 +1,121 @@
-// app/submit/page.tsx
-export const dynamic = 'force-dynamic';
+'use client';
 
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
-import { createClientServer } from '@/lib/supabase-server';
+import { useState } from 'react';
+import { createClientBrowser } from '@/lib/supabase-browser';
 
-// Optional: static metadata so build never touches Supabase here
-export const metadata = {
-  title: 'Submit a Resource — Cybersecurity Directory',
-  description: 'Share a cybersecurity resource with the community.',
-};
+export default function SubmitPage() {
+  const supabase = createClientBrowser();
+  const [title, setTitle] = useState('');
+  const [url, setUrl] = useState('');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState('');
+  const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
+  const [sending, setSending] = useState(false);
 
-// ---- Server Action ----
-async function submitResource(formData: FormData) {
-  'use server';
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
 
-  // Create Supabase client at REQUEST time (not module top-level)
-  const supabase = await createClientServer();
+    if (!title.trim() || !url.trim()) {
+      setMsg({ err: 'Title and URL are required.' });
+      return;
+    }
+    setSending(true);
 
-  const title = String(formData.get('title') ?? '').trim();
-  const url = String(formData.get('url') ?? '').trim();
-  const resource_type = String(formData.get('resource_type') ?? '').trim();
-  const affiliate_link = (String(formData.get('affiliate_link') ?? '').trim() || null) as string | null;
-  const description = (String(formData.get('description') ?? '').trim() || null) as string | null;
+    const tagList = tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
 
-  if (!title || !url || !resource_type) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const submitted_by = userData.user?.id ?? null;
 
-  // Get current user — if logged in, attach their id
-  const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from('resources').insert({
+      title,
+      url,
+      description: description || null,
+      tags: tagList.length ? tagList : null,
+      status: 'pending',
+      submitted_by,
+    });
 
-  await supabase.from('submissions').insert({
-    submitter_id: user?.id ?? null,   // 👈 this fixes the FK constraint
-    title,
-    url,
-    resource_type,
-    affiliate_link,
-    description,
-    status: 'pending',
-  });
+    setSending(false);
 
-  // Refresh listings if needed
-  revalidatePath('/resources');
+    if (error) {
+      setMsg({ err: error.message });
+      return;
+    }
 
-  // Redirect to resources (or a thank-you page)
-  redirect('/resources');
-}
+    setMsg({ ok: 'Thanks! Your submission is pending review.' });
+    setTitle('');
+    setUrl('');
+    setDescription('');
+    setTags('');
+  };
 
-export default async function SubmitPage() {
-  // Server component only renders a form; no Supabase calls at render
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Submit a resource</h1>
+    <section className="mx-auto max-w-2xl space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold">Submit a resource</h1>
+        <p className="text-sm text-gray-600">Keep it practical, useful, and relevant to cybersecurity.</p>
+      </header>
 
-      <form action={submitResource} className="space-y-3 rounded-lg border p-4">
+      <form onSubmit={onSubmit} className="rounded-2xl border bg-white p-6 shadow-sm space-y-4">
         <div>
-          <label className="text-sm">Title *</label>
+          <label className="block text-sm font-medium">Title *</label>
           <input
-            name="title"
-            className="mt-1 w-full rounded-md border px-3 py-2"
+            className="mt-1 w-full rounded-xl border px-3 py-2"
+            placeholder="e.g., OWASP Top 10 (2024)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             required
           />
         </div>
 
         <div>
-          <label className="text-sm">URL *</label>
+          <label className="block text-sm font-medium">URL *</label>
           <input
-            name="url"
             type="url"
+            className="mt-1 w-full rounded-xl border px-3 py-2"
             placeholder="https://…"
-            className="mt-1 w-full rounded-md border px-3 py-2"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
             required
           />
         </div>
 
         <div>
-          <label className="text-sm">Type</label>
-          <select
-            name="resource_type"
-            className="mt-1 rounded-md border px-3 py-2"
-            defaultValue="tool"
-            required
-          >
-            <option value="course">course</option>
-            <option value="tool">tool</option>
-            <option value="platform">platform</option>
-            <option value="cert">cert</option>
-            <option value="resource">resource</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="text-sm">Affiliate link (optional)</label>
-          <input
-            name="affiliate_link"
-            placeholder="https://…?ref=you"
-            className="mt-1 w-full rounded-md border px-3 py-2"
-          />
-        </div>
-
-        <div>
-          <label className="text-sm">Description (optional)</label>
+          <label className="block text-sm font-medium">Description</label>
           <textarea
-            name="description"
-            rows={3}
-            className="mt-1 w-full rounded-md border px-3 py-2"
+            className="mt-1 w-full rounded-xl border px-3 py-2"
+            rows={4}
+            placeholder="What makes this resource great?"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </div>
 
-        <button type="submit" className="rounded-md border px-3 py-2">
-          Submit for review
+        <div>
+          <label className="block text-sm font-medium">Tags (comma‑separated)</label>
+          <input
+            className="mt-1 w-full rounded-xl border px-3 py-2"
+            placeholder="training, threat intel, blue team"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={sending}
+          className="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-white shadow-soft hover:bg-brand-700"
+        >
+          {sending ? 'Submitting…' : 'Submit for review'}
         </button>
 
-        <p className="text-xs text-gray-500">
-          Submissions are reviewed by moderators. Approved links appear in the directory.
-        </p>
+        {msg?.ok && <p className="text-sm text-green-700">{msg.ok}</p>}
+        {msg?.err && <p className="text-sm text-red-700">{msg.err}</p>}
       </form>
-    </main>
+    </section>
   );
 }

@@ -1,40 +1,53 @@
-// app/resources/page.tsx
-export const dynamic = 'force-dynamic';
-
 import { createClientServer } from '@/lib/supabase-server';
+import { ResourceCard } from '@/components/ResourceCard';
 
-export const metadata = {
-  title: 'Resources — Cybersecurity Directory',
-  description: 'Browse community-curated cybersecurity tools, courses, and platforms.',
-};
+export const dynamic = 'force-dynamic'; // ensure fresh list in prod
 
 export default async function ResourcesPage() {
-  const supabase = await createClientServer(); // create client at request time ONLY
+  const supabase = await createClientServer();
 
-  const { data: resources, error } = await supabase
+  const { data, error } = await supabase
     .from('resources')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(100);
+    .select('id, title, description, url, tags, created_at, status')
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false });
 
   if (error) {
-    return <main className="p-6">Error loading resources: {error.message}</main>;
+    return (
+      <div className="rounded-xl border bg-red-50 p-4 text-sm text-red-700">
+        Failed to load resources: {error.message}
+      </div>
+    );
   }
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-bold">Resources</h1>
-      <ul className="mt-4 grid gap-3">
-        {(resources ?? []).map((r) => (
-          <li key={r.id} className="rounded-md border p-4">
-            <h2 className="font-semibold">{r.title}</h2>
-            {r.description && <p className="text-sm text-gray-700 mt-1">{r.description}</p>}
-          </li>
-        ))}
-        {(resources ?? []).length === 0 && (
-          <li className="text-gray-500">No resources yet.</li>
-        )}
-      </ul>
-    </main>
+    <section className="space-y-6">
+      <header className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+        <div>
+          <h1 className="text-2xl font-semibold">Resources</h1>
+          <p className="text-sm text-gray-600">Approved submissions, most recent first.</p>
+        </div>
+      </header>
+
+      {!data || data.length === 0 ? (
+        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
+          No resources yet. Be the first to{' '}
+          <a href="/submit" className="text-brand-700 underline">submit one</a>.
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {data.map((r) => (
+            <ResourceCard
+              key={r.id}
+              title={r.title}
+              url={r.url}
+              description={r.description}
+              tags={r.tags}
+              created_at={r.created_at}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
