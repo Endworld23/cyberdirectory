@@ -1,174 +1,133 @@
-// app/admin/submissions/page.tsx
-export const dynamic = 'force-dynamic';
-
-import { revalidatePath } from 'next/cache';
+// Server Component
+import { redirect, notFound } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
 
-/* ---------------------- Helpers ---------------------- */
+// ✅ OPTIONAL: use service role for mutations so we don't fight RLS
+import { createClient as createSupabaseServerAdmin } from '@supabase/supabase-js';
 
-async function isAdmin(): Promise<boolean> {
-  const supabase = await createClientServer();
-  const { data: userRes } = await supabase.auth.getUser();
-  const user = userRes?.user;
-  if (!user) return false;
-
-  // 1) Preferred: check `public.admins` allow-list
-  const { data: adminRow, error: adminErr } = await supabase
-    .from('admins')
-    .select('user_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (adminRow) return true;
-
-  // If admins table doesn't exist yet (42P01) or is empty, fall back to profiles.role
-  if (adminErr && (adminErr.code === '42P01' || /relation .* does not exist/i.test(adminErr.message))) {
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    return prof?.role === 'admin';
-  }
-
-  return false;
-}
-
-/* ---------------------- Server actions ---------------------- */
-
-async function approveSubmission(formData: FormData): Promise<void> {
-  'use server';
-  if (!(await isAdmin())) return;
-
-  const id = Number(formData.get('id'));
-  if (!id) return;
-
-  const supabase = await createClientServer();
-
-  // 1) Load submission
-  const { data: sub } = await supabase
-    .from('submissions')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (!sub) return;
-
-  // 2) Create resource (affiliate-first)
-  const { error: insertErr } = await supabase.from('resources').insert({
-    title: sub.title,
-    resource_type: sub.resource_type,
-    provider: null,
-    website: sub.url,
-    affiliate_link: sub.affiliate_link,
-    description: sub.description,
-    is_free: null,
-  });
-  if (insertErr) return;
-
-  // 3) Mark as approved
-  await supabase.from('submissions').update({ status: 'approved' }).eq('id', id);
-
-  // 4) Refresh page
-  revalidatePath('/admin/submissions');
-}
-
-async function rejectSubmission(formData: FormData): Promise<void> {
-  'use server';
-  if (!(await isAdmin())) return;
-
-  const id = Number(formData.get('id'));
-  if (!id) return;
-
-  const supabase = await createClientServer();
-  await supabase.from('submissions').update({ status: 'rejected' }).eq('id', id);
-
-  revalidatePath('/admin/submissions');
-}
-
-/* ---------------------- Page ---------------------- */
+type Resource = {
+  id: string;
+  title: string;
+  description: string | null;
+  url: string | null;
+  tags: string[] | null;
+  status: 'pending' | 'approved' | 'rejected' | null;
+  created_at: string | null;
+  submitted_by: string | null;
+};
 
 export default async function AdminSubmissionsPage() {
-  // Protect page
-  if (!(await isAdmin())) {
-    return <main className="p-6">Not authorized.</main>;
+  const supabase = await createClientServer();
+
+  // 1) Must be logged in
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login?next=/admin/submissions');
+
+  // 2) Must be admin
+  const { data: profile, error: profileErr } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single();
+
+  if (profileErr) {
+    // If profile doesn't exist yet, deny until profile row exists
+    notFound();
+  }
+  if (!profile?.is_admin) {
+    notFound(); // or redirect('/')
   }
 
-  const supabase = await createClientServer();
-  const { data: subs, error } = await supabase
-    .from('submissions')
-    .select(
-      'id, title, url, resource_type, affiliate_link, description, status, created_at, submitter_id'
-    )
-    .order('created_at', { ascending: false })
-    .limit(200);
+  // 3) Fetch pending resources
+  const { data: resources, error } = await supabase
+    .from('resources')
+    .select('id, title, description, url, tags, status, created_at, submitted_by')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
 
   if (error) {
-    return <main className="p-6">Error: {error.message}</main>;
+    return <div className="p-6 text-red-600">Failed to load submissions: {error.message}</div>;
   }
 
-  const pending = (subs ?? []).filter((s) => s.status === 'pending');
+  async function approve(formData: FormData) {
+    'use server';
+    const id = formData.get('id') as string;
+
+    // Use service role ONLY on the server for privileged updates
+    const admin = createSupabaseServerAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+
+    await admin.from('resources').update({ status: 'approved' }).eq('id', id);
+    // Revalidate this page after action
+  }
+
+  async function reject(formData: FormData) {
+    'use server';
+    const id = formData.get('id') as string;
+
+    const admin = createSupabaseServerAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+
+    await admin.from('resources').update({ status: 'rejected' }).eq('id', id);
+  }
 
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Submissions (Pending)</h1>
+    <main className="mx-auto max-w-3xl p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Pending Submissions</h1>
 
-      <ul className="space-y-3">
-        {pending.length === 0 && (
-          <li className="text-gray-500">No pending submissions.</li>
-        )}
+      {(!resources || resources.length === 0) && (
+        <p className="text-sm text-gray-600">No pending submissions 🎉</p>
+      )}
 
-        {pending.map((s) => (
-          <li key={s.id} className="rounded-lg border p-4">
+      <ul className="space-y-4">
+        {resources?.map((r: Resource) => (
+          <li key={r.id} className="rounded-2xl border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold">{s.title}</h2>
-                <p className="text-sm text-gray-500">
-                  {s.resource_type} •{' '}
+                <h2 className="font-medium">{r.title}</h2>
+                {r.url && (
                   <a
-                    className="underline"
-                    href={s.url}
+                    href={r.url}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noreferrer"
+                    className="text-sm text-blue-600 underline"
                   >
-                    {s.url}
+                    {r.url}
                   </a>
-                </p>
-
-                {s.affiliate_link && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Affiliate:{' '}
-                    <a
-                      className="underline"
-                      href={s.affiliate_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {s.affiliate_link}
-                    </a>
-                  </p>
                 )}
-
-                {s.description && (
-                  <p className="mt-2 text-gray-700">{s.description}</p>
+                {r.description && (
+                  <p className="mt-2 text-sm text-gray-700">{r.description}</p>
                 )}
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Submitted {new Date(s.created_at).toLocaleString()}
+                {r.tags && r.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {r.tags.map((t) => (
+                      <span key={t} className="rounded-full border px-2 py-0.5 text-xs">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  Status: {r.status} • Submitted: {r.created_at ?? 'n/a'}
                 </p>
               </div>
 
-              <div className="flex gap-2">
-                <form action={approveSubmission}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <button className="rounded-md border px-3 py-2" type="submit">
-                    Approve → Resource
+              <div className="flex flex-col gap-2">
+                <form action={approve}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <button className="rounded bg-green-600 px-3 py-1.5 text-white">
+                    Approve
                   </button>
                 </form>
-
-                <form action={rejectSubmission}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <button className="rounded-md border px-3 py-2" type="submit">
+                <form action={reject}>
+                  <input type="hidden" name="id" value={r.id} />
+                  <button className="rounded bg-red-600 px-3 py-1.5 text-white">
                     Reject
                   </button>
                 </form>
