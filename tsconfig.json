@@ -14,8 +14,9 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "baseUrl": ".",                 // 👈 add this
-    "paths": { "@/*": ["./src/*"] } // keep this
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "types": ["node"]            // ✅ limit ambient types to Node only
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]

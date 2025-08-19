@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-// Next 15: cookies() is async
+// Next 15+: in many server contexts cookies() is async, so await it.
 export const createClientServer = async () => {
   const cookieStore = await cookies();
 
@@ -9,12 +9,17 @@ export const createClientServer = async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-       cookies: {
-        get: (name) => cookieStore.get(name)?.value,
-        set: (name, value, options) =>
-          cookieStore.set({ name, value, ...options }),
-        remove: (name, options) =>
-          cookieStore.set({ name, value: '', ...options, expires: new Date(0) }),
+      cookies: {
+        // New API: return all cookies as [{ name, value }]
+        getAll() {
+          return cookieStore.getAll().map(({ name, value }) => ({ name, value }));
+        },
+        // New API: set an array of cookies coming from Supabase
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            cookieStore.set({ name, value, ...options });
+          }
+        },
       },
     }
   );
