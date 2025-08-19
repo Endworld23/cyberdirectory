@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { createClientBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
   const supabase = createClientBrowser();
-  const router = useRouter();
   const search = useSearchParams();
   const next = search.get('next') || '/';
 
@@ -14,27 +13,27 @@ export default function LoginPage() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
 
-  // Build redirect target for both flows, preserving ?next=
   const base = process.env.NEXT_PUBLIC_SITE_URL!;
   const callback = `${base}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ''}`;
 
   const sendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setMsg(null);
-    if (!email.trim()) return setMsg({ err: 'Please enter your email.' });
+    if (!email.trim()) {
+      setMsg({ err: 'Please enter your email.' });
+      return;
+    }
     try {
       setSending(true);
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: {
-          // IMPORTANT: emailRedirectTo must match your allowed redirect list
-          emailRedirectTo: callback,
-        },
+        options: { emailRedirectTo: callback },
       });
       if (error) throw error;
       setMsg({ ok: 'Check your email for the magic link.' });
-    } catch (err: any) {
-      setMsg({ err: err.message || 'Failed to send magic link.' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to send magic link.';
+      setMsg({ err: message });
     } finally {
       setSending(false);
     }
@@ -42,12 +41,12 @@ export default function LoginPage() {
 
   const signInWithGoogle = async () => {
     setMsg(null);
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: callback },
     });
     if (error) setMsg({ err: error.message });
-    // On success, browser will navigate to Google → back to /auth/callback
+    // Success path redirects out to Google, then back to /auth/callback
   };
 
   return (
