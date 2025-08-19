@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClientBrowser } from '@/lib/supabase-browser';
 
-export default function LoginPage() {
+function LoginInner() {
   const supabase = createClientBrowser();
   const search = useSearchParams();
   const next = search.get('next') || '/';
@@ -46,7 +46,6 @@ export default function LoginPage() {
       options: { redirectTo: callback },
     });
     if (error) setMsg({ err: error.message });
-    // Success path redirects out to Google, then back to /auth/callback
   };
 
   return (
@@ -84,5 +83,13 @@ export default function LoginPage() {
       {msg?.ok && <p className="text-green-600 text-sm">{msg.ok}</p>}
       {msg?.err && <p className="text-red-600 text-sm">{msg.err}</p>}
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
   );
 }
