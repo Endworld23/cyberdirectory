@@ -17,23 +17,21 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // Refresh/validate session (this also sets refreshed cookies on res)
+  // This refreshes expired tokens and ensures SSR has a valid session
   await supabase.auth.getUser();
 
-  // Basic auth guard for /admin (role check happens in the page)
-  if (req.nextUrl.pathname.startsWith('/admin')) {
+  // Optional: if user is logged in and hits /login, bounce home (or to ?next=)
+  if (req.nextUrl.pathname === '/login') {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      const url = new URL('/login', req.url);
-      url.searchParams.set('next', req.nextUrl.pathname);
-      return NextResponse.redirect(url);
+    if (user) {
+      const next = req.nextUrl.searchParams.get('next') || '/';
+      return NextResponse.redirect(new URL(next, req.url));
     }
   }
 
   return res;
 }
 
-// Apply to everything except static assets
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)'],
 };

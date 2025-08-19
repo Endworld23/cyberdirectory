@@ -3,8 +3,9 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 
 export async function GET(req: Request) {
-  const { origin, searchParams } = new URL(req.url);
-  const code = searchParams.get('code');
+  const url = new URL(req.url);
+  const code = url.searchParams.get('code');
+  const next = url.searchParams.get('next') || '/';
 
   if (code) {
     const cookieStore = cookies();
@@ -21,11 +22,10 @@ export async function GET(req: Request) {
         },
       }
     );
-    // This sets the session cookies server-side
+
+    // Exchange the PKCE code for a session + set auth cookies
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  // Optional: support ?next=/admin/submissions
-  const next = searchParams.get('next') || '/';
-  return NextResponse.redirect(`${origin}${next}`);
+  return NextResponse.redirect(new URL(next, url.origin));
 }
