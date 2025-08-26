@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 
 type ResourceRow = {
   id: string
+  slug: string
   title: string
   description: string | null
   url: string
@@ -15,11 +16,10 @@ type ResourceRow = {
 }
 
 export default async function ResourcesPage() {
-  const supabase = await createClientServer()
-
-  const { data, error } = await supabase
+  const s = await createClientServer()
+  const { data, error } = await s
     .from('resources')
-    .select('id, title, description, url, logo_url, pricing, created_at')
+    .select('id, slug, title, description, url, logo_url, pricing, created_at')
     .eq('is_approved', true)
     .order('created_at', { ascending: false })
 
@@ -51,7 +51,7 @@ export default async function ResourcesPage() {
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {rows.map(r => (
             <li key={r.id} className="rounded-xl border p-4 hover:shadow">
-              <Link href={`/resources/${r.id}`} className="block">
+              <Link href={`/resources/${r.slug}`} className="block">
                 {r.logo_url && (
                   <Image
                     src={r.logo_url}
