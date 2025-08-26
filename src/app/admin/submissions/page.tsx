@@ -15,6 +15,7 @@ type Submission = {
   status: 'pending' | 'approved' | 'rejected' | null
   created_at: string
   logo_url: string | null
+  notes: string | null
 }
 
 function slugify(s: string) {
@@ -24,7 +25,6 @@ function slugify(s: string) {
 export default async function AdminSubmissionsPage() {
   const s = await createClientServer()
 
-  // RLS already restricts to admins via email allow-list
   const { data: subs, error } = await s
     .from('submissions')
     .select('*')
@@ -35,7 +35,6 @@ export default async function AdminSubmissionsPage() {
     return <div className="p-6 text-red-600">Failed to load submissions: {error.message}</div>
   }
 
-  // ✅ Next 15 server actions: (formData: FormData) only
   async function approveAction(formData: FormData) {
     'use server'
     const s = await createClientServer()
@@ -44,7 +43,7 @@ export default async function AdminSubmissionsPage() {
     const { data: sub } = await s.from('submissions').select('*').eq('id', id).single()
     if (!sub) return
 
-    // 1) category
+    // category
     let category_id: string | null = null
     if (sub.category_slug) {
       const { data: cat } = await s
@@ -55,7 +54,7 @@ export default async function AdminSubmissionsPage() {
       category_id = cat?.id ?? null
     }
 
-    // 2) resource
+    // resource
     const { data: res, error: e2 } = await s
       .from('resources')
       .insert({
@@ -72,20 +71,18 @@ export default async function AdminSubmissionsPage() {
       .single()
     if (e2) throw e2
 
-    // 3) tags
+    // tags
     if (Array.isArray(sub.tag_slugs) && sub.tag_slugs.length) {
       const { data: tags } = await s
         .from('tags')
         .upsert(sub.tag_slugs.map((sl: string) => ({ slug: sl, name: sl })))
         .select('id')
       if (tags?.length) {
-        await s
-          .from('resource_tags')
-          .insert(tags.map(t => ({ resource_id: res!.id, tag_id: t.id })))
+        await s.from('resource_tags').insert(tags.map(t => ({ resource_id: res!.id, tag_id: t.id })))
       }
     }
 
-    // 4) mark approved
+    // mark approved
     await s.from('submissions').update({ status: 'approved' }).eq('id', id)
     revalidatePath('/resources'); revalidatePath('/admin/submissions')
   }
@@ -94,7 +91,8 @@ export default async function AdminSubmissionsPage() {
     'use server'
     const s = await createClientServer()
     const id = String(formData.get('id') ?? '')
-    await s.from('submissions').update({ status: 'rejected' }).eq('id', id)
+    const notes = String(formData.get('notes') ?? '').trim() || null
+    await s.from('submissions').update({ status: 'rejected', notes }).eq('id', id)
     revalidatePath('/admin/submissions')
   }
 
@@ -120,19 +118,25 @@ export default async function AdminSubmissionsPage() {
                   {r.category_slug && <span className="mr-3">category: {r.category_slug}</span>}
                   {r.tag_slugs?.length ? <span>tags: {r.tag_slugs.join(', ')}</span> : null}
                 </div>
-                <p className="mt-2 text-xs text-gray-500">
-                  Submitted: {new Date(r.created_at).toLocaleString()}
-                </p>
+                <p className="mt-2 text-xs text-gray-500">Submitted: {new Date(r.created_at).toLocaleString()}</p>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 w-48">
                 <form action={approveAction}>
                   <input type="hidden" name="id" value={r.id} />
-                  <button className="rounded bg-green-600 px-3 py-1.5 text-white">Approve</button>
+                  <button className="w-full rounded bg-green-600 px-3 py-1.5 text-white">Approve</button>
                 </form>
-                <form action={rejectAction}>
+
+                <form action={rejectAction} className="space-y-2">
                   <input type="hidden" name="id" value={r.id} />
-                  <button className="rounded bg-red-600 px-3 py-1.5 text-white">Reject</button>
+                  <textarea
+                    name="notes"
+                    placeholder="Reason (optional)"
+                    rows={2}
+                    className="w-full rounded-xl border px-2 py-1 text-sm"
+                    defaultValue={r.notes ?? ''}
+                  />
+                  <button className="w-full rounded bg-red-600 px-3 py-1.5 text-white">Reject</button>
                 </form>
               </div>
             </div>
