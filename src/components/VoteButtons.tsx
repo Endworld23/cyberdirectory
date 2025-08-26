@@ -1,121 +1,123 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
-import { createClientBrowser } from '@/lib/supabase-browser';
+import { useEffect, useMemo, useState } from 'react'
+import { createClientBrowser } from '@/lib/supabase-browser'
 
-type TargetType = 'resource' | 'review';
+type Props =
+  | { targetType: 'resource'; resourceId: string; reviewId?: never }
+  | { targetType: 'review'; reviewId: string; resourceId?: never }
 
-export default function VoteButtons({
-  targetType,
-  resourceId,
-  reviewId,
-  initialScore,
-}: {
-  targetType: TargetType;
-  resourceId?: number;   // required if targetType === 'resource'
-  reviewId?: number;     // required if targetType === 'review'
-  initialScore?: number; // optional score to show immediately
-}) {
-  const supabase = createClientBrowser();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [myVote, setMyVote] = useState<0 | 1 | -1>(0);
-  const [score, setScore] = useState<number>(initialScore ?? 0);
-  const [loading, setLoading] = useState<boolean>(false);
+export default function VoteButtons(props: Props) {
+  const supabase = createClientBrowser()
+  const [score, setScore] = useState<number>(0)
+  const [myVote, setMyVote] = useState<-1 | 0 | 1>(0)
+  const key = useMemo(
+    () => (props.targetType === 'resource' ? `r:${props.resourceId}` : `v:${props.reviewId}`),
+    [props]
+  )
 
-  // load current user + their vote for this target
+  // Load score + my vote
   useEffect(() => {
-    (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u?.user?.id ?? null;
-      setUserId(uid);
+    let mounted = true
+    ;(async () => {
+      const targetFilter =
+        props.targetType === 'resource'
+          ? { target_type: 'resource' as const, resource_id: props.resourceId }
+          : { target_type: 'review' as const, review_id: props.reviewId }
 
-      if (!uid) return;
-
-      const { data } = await supabase
+      // score
+      const { data: votes } = await supabase
         .from('votes')
         .select('vote')
-        .eq('voter_id', uid)
-        .eq('target_type', targetType)
-        .eq('resource_id', targetType === 'resource' ? resourceId! : null)
-        .eq('review_id', targetType === 'review' ? reviewId! : null)
-        .maybeSingle();
+        .match(targetFilter)
+      const total = (votes ?? []).reduce((s, v) => s + Number(v.vote), 0)
 
-      if (data?.vote === 1 || data?.vote === -1) setMyVote(data.vote);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function setVote(next: 1 | -1) {
-    if (!userId) {
-      alert('Please sign in to vote.');
-      return;
-    }
-    if (loading) return;
-    setLoading(true);
-
-    // toggle off if clicking same vote
-    if (myVote === next) {
-      const { error } = await supabase
-        .from('votes')
-        .delete()
-        .eq('voter_id', userId)
-        .eq('target_type', targetType)
-        .eq('resource_id', targetType === 'resource' ? resourceId! : null)
-        .eq('review_id', targetType === 'review' ? reviewId! : null);
-
-      if (!error) {
-        setScore((s) => s - next); // remove previous effect
-        setMyVote(0);
+      // my vote
+      const { data: { user } } = await supabase.auth.getUser()
+      let mine: -1 | 0 | 1 = 0
+      if (user) {
+        const { data: my } = await supabase
+          .from('votes')
+          .select('vote')
+          .eq('voter_id', user.id)
+          .match(targetFilter)
+          .single()
+        mine = (my?.vote as -1 | 1 | undefined) ?? 0
       }
-      setLoading(false);
-      return;
-    }
-// upsert new vote
-const payload = {
-  voter_id: userId!,
-  target_type: targetType,
-  vote: next as 1 | -1,
-  resource_id: targetType === 'resource' ? resourceId! : null,
-  review_id: targetType === 'review' ? reviewId! : null,
-} satisfies {
-  voter_id: string;
-  target_type: 'resource' | 'review';
-  vote: -1 | 1;
-  resource_id: number | null;
-  review_id: number | null;
-};
 
-const { error } = await supabase
-  .from('votes')
-  .upsert(payload, { onConflict: 'voter_id,target_type,resource_id,review_id' });
+      if (mounted) {
+        setScore(total)
+        setMyVote(mine)
+      }
+    })()
+    return () => { mounted = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
 
-    if (!error) {
-      // adjust score: remove old vote, add new vote
-      setScore((s) => s - myVote + next);
-      setMyVote(next);
+  async function cast(next: -1 | 1) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      // redirect or prompt
+      window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname)
+      return
     }
-    setLoading(false);
+
+    const targetFilter =
+      props.targetType === 'resource'
+        ? { target_type: 'resource' as const, resource_id: props.resourceId }
+        : { target_type: 'review' as const, review_id: props.reviewId }
+
+    try {
+      if (myVote === next) {
+        // undo: delete my vote
+        await supabase
+          .from('votes')
+          .delete()
+          .eq('voter_id', user.id)
+          .match(targetFilter)
+
+        setMyVote(0)
+        setScore(s => s - next)
+      } else {
+        // change vote: delete then insert (RLS allows delete_own + insert_authed)
+        await supabase
+          .from('votes')
+          .delete()
+          .eq('voter_id', user.id)
+          .match(targetFilter)
+
+        const { error } = await supabase
+          .from('votes')
+          .insert([{ ...targetFilter, voter_id: user.id, vote: next }])
+        if (error) throw error
+
+        const delta = (myVote === 0) ? next : (next * 2) // swap -1<->1 changes score by 2
+        setMyVote(next)
+        setScore(s => s + delta)
+      }
+    } catch (e) {
+      // no-op; UI stays as-is if RLS blocks
+      console.error(e)
+    }
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="inline-flex items-center gap-2 rounded-xl border px-2 py-1">
       <button
-        className={`rounded border px-2 py-1 text-sm ${myVote === 1 ? 'bg-gray-100' : ''}`}
-        onClick={() => setVote(1)}
-        disabled={loading}
+        onClick={() => cast(1)}
+        className={`rounded px-2 py-1 text-sm ${myVote === 1 ? 'bg-green-600 text-white' : 'hover:bg-gray-100'}`}
         aria-label="Upvote"
       >
         ▲
       </button>
-      <span className="min-w-6 text-center tabular-nums">{score}</span>
+      <span className="min-w-6 text-center text-sm tabular-nums">{score}</span>
       <button
-        className={`rounded border px-2 py-1 text-sm ${myVote === -1 ? 'bg-gray-100' : ''}`}
-        onClick={() => setVote(-1)}
-        disabled={loading}
+        onClick={() => cast(-1)}
+        className={`rounded px-2 py-1 text-sm ${myVote === -1 ? 'bg-red-600 text-white' : 'hover:bg-gray-100'}`}
         aria-label="Downvote"
       >
         ▼
       </button>
     </div>
-  );
+  )
 }

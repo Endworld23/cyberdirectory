@@ -1,101 +1,99 @@
-import { createClientServer } from '@/lib/supabase-server';
-import ReplyForm from './ReplyForm';            // replies to existing comments
-import UnifiedComposer from './UnifiedComposer'; // single top composer
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClientBrowser } from '@/lib/supabase-browser'
 
 type CommentRow = {
-  id: number;
-  parent_id: number | null;
-  user_id: string | null;
-  body: string;
-  created_at: string;
-};
+  id: string
+  resource_id: string
+  user_id: string | null
+  body: string
+  created_at: string
+}
 
-type TreeNode = CommentRow & { children: TreeNode[] };
+export default function CommentsSection({ resourceId }: { resourceId: string }) {
+  const supabase = createClientBrowser()
+  const [rows, setRows] = useState<CommentRow[]>([])
+  const [body, setBody] = useState('')
+  const [posting, setPosting] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
-function buildTree(rows: CommentRow[]): TreeNode[] {
-  const byId = new Map<number, TreeNode>();
-  const roots: TreeNode[] = [];
+  // load comments
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('id, resource_id, user_id, body, created_at')
+        .eq('resource_id', resourceId)
+        .is('parent_id', null)
+        .order('created_at', { ascending: false })
+      if (!mounted) return
+      if (error) setErr(error.message)
+      else setRows((data ?? []) as CommentRow[])
+    })()
+    return () => { mounted = false }
+  }, [resourceId, supabase])
 
-  for (const r of rows) byId.set(r.id, { ...r, children: [] });
+  async function post() {
+    setErr(null)
+    if (!body.trim()) return
+    setPosting(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname)
+      return
+    }
 
-  for (const r of byId.values()) {
-    if (r.parent_id !== null && byId.has(r.parent_id)) {
-      byId.get(r.parent_id)!.children.push(r);
-    } else {
-      roots.push(r);
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([{ resource_id: resourceId, user_id: user.id, body: body.trim() }])
+      .select('id, resource_id, user_id, body, created_at')
+      .single()
+
+    setPosting(false)
+    if (error) setErr(error.message)
+    else {
+      setBody('')
+      setRows((prev) => [data as CommentRow, ...prev])
     }
   }
 
-  // newest first per level
-  const sortDesc = (nodes: TreeNode[]) => {
-    nodes.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
-    nodes.forEach((n) => sortDesc(n.children));
-  };
-  sortDesc(roots);
-
-  return roots;
-}
-
-function CommentItem({
-  node,
-  resourceId,
-  depth = 0,
-}: {
-  node: TreeNode;
-  resourceId: number;
-  depth?: number;
-}) {
   return (
-    <li className="mt-3">
-      <div className="rounded-md border p-3">
-        <p className="whitespace-pre-wrap text-sm text-gray-800">{node.body}</p>
-        <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-          <span>{new Date(node.created_at).toLocaleString()}</span>
-        </div>
-        <div className="mt-2">
-          <ReplyForm resourceId={resourceId} parentId={node.id} />
+    <section className="mt-8">
+      <h2 className="text-xl font-semibold">Comments</h2>
+
+      <div className="mt-3 rounded-xl border p-3">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Share your experience…"
+          rows={3}
+          className="w-full resize-y rounded-xl border px-3 py-2"
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={post}
+            disabled={posting}
+            className="rounded bg-black px-3 py-1.5 text-white"
+          >
+            {posting ? 'Posting…' : 'Post'}
+          </button>
+          {err && <span className="text-sm text-red-600">{err}</span>}
         </div>
       </div>
 
-      {node.children.length > 0 && (
-        <ul className="ml-4 border-l pl-4">
-          {node.children.map((child) => (
-            <CommentItem key={child.id} node={child} resourceId={resourceId} depth={depth + 1} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-export default async function CommentsSection({ resourceId }: { resourceId: number }) {
-  const supabase = await createClientServer();
-  const { data: rows, error } = await supabase
-    .from('comments')
-    .select('id, parent_id, user_id, body, created_at')
-    .eq('resource_id', resourceId)
-    .order('created_at', { ascending: false })
-    .limit(500);
-
-  if (error) {
-    return <div className="text-red-600">Error loading comments: {error.message}</div>;
-  }
-
-  const tree = buildTree((rows ?? []) as CommentRow[]);
-
-  return (
-    <section className="space-y-3">
-      <h2 className="text-xl font-semibold">Discussion</h2>
-
-      {/* unified composer (review + discussion in one box) */}
-      <UnifiedComposer resourceId={resourceId} />
-
-      <ul className="mt-2">
-        {tree.length === 0 && <li className="text-gray-500">No comments yet.</li>}
-        {tree.map((n) => (
-          <CommentItem key={n.id} node={n} resourceId={resourceId} />
+      <ul className="mt-4 space-y-3">
+        {rows.map((c) => (
+          <li key={c.id} className="rounded-xl border p-3">
+            <div className="text-sm text-gray-700 whitespace-pre-wrap">{c.body}</div>
+            <div className="mt-1 text-xs text-gray-500">{new Date(c.created_at).toLocaleString()}</div>
+          </li>
         ))}
+        {rows.length === 0 && (
+          <li className="text-sm text-gray-500">No comments yet. Be the first!</li>
+        )}
       </ul>
     </section>
-  );
+  )
 }
