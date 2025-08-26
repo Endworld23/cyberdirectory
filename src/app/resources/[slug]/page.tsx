@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import VoteButtons from '@/components/VoteButtons'
@@ -7,9 +8,58 @@ import CommentsSection from '@/components/CommentsSection'
 
 export const dynamic = 'force-dynamic'
 
+type ResourceRow = {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  url: string
+  logo_url: string | null
+  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
+  is_approved: boolean
+  category_id: string | null
+}
+
 type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
 
+/* ------------------ Metadata ------------------ */
+export async function generateMetadata(
+  { params }: { params: { slug: string } }
+): Promise<Metadata> {
+  const s = await createClientServer()
+  const { data } = await s
+    .from('resources')
+    .select('title, description, slug, logo_url')
+    .eq('slug', params.slug)
+    .eq('is_approved', true)
+    .single()
+
+  const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const title = data?.title ? `${data.title} — Cyber Directory` : 'Resource — Cyber Directory'
+  const description = data?.description ?? 'Explore cybersecurity resources curated by the community.'
+  const ogImage = data?.logo_url || `${site}/og-default.png`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `${site}/resources/${params.slug}`,
+      images: [{ url: ogImage }],
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [ogImage],
+    },
+  }
+}
+
+/* ------------------ Page ------------------ */
 export default async function ResourceBySlug({ params }: { params: { slug: string } }) {
   const s = await createClientServer()
 
@@ -33,7 +83,7 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
     category = c ?? null
   }
 
-  // Load tags (two-step to avoid embedding complexity)
+  // Load tags
   const { data: rt } = await s
     .from('resource_tags')
     .select('tag_id')
@@ -47,6 +97,17 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
       .in('id', tagIds)
       .order('name', { ascending: true })
     tags = (tagRows ?? []) as TagRow[]
+  }
+
+  // JSON-LD (CreativeWork baseline)
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CreativeWork',
+    name: r.title,
+    description: r.description ?? undefined,
+    url: r.url ?? undefined,
+    image: r.logo_url ?? undefined,
+    about: tags.length ? tags.map(t => t.name) : undefined,
   }
 
   return (
@@ -103,6 +164,13 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
 
       {/* Comments */}
       <CommentsSection resourceId={r.id} />
+
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
     </main>
   )
 }
