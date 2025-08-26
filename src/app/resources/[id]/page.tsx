@@ -4,6 +4,15 @@ import { createClientServer } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
+type Resource = {
+  id: string
+  title: string
+  description: string | null
+  url: string
+  logo_url: string | null
+  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
+}
+
 export default async function ResourceDetail({ params }: { params: { id: string } }) {
   const supabase = await createClientServer()
 
@@ -28,7 +37,6 @@ export default async function ResourceDetail({ params }: { params: { id: string 
                 width={48}
                 height={48}
                 className="h-12 w-12 object-contain"
-                unoptimized
               />
             )}
             <h1 className="text-2xl font-bold">{r.title}</h1>

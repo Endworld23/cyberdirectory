@@ -6,7 +6,6 @@ export const dynamic = 'force-dynamic'
 
 type ResourceRow = {
   id: string
-  slug: string
   title: string
   description: string | null
   url: string
@@ -20,7 +19,7 @@ export default async function ResourcesPage() {
 
   const { data, error } = await supabase
     .from('resources')
-    .select('id, slug, title, description, url, logo_url, pricing, created_at')
+    .select('id, title, description, url, logo_url, pricing, created_at')
     .eq('is_approved', true)
     .order('created_at', { ascending: false })
 
@@ -52,7 +51,7 @@ export default async function ResourcesPage() {
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {rows.map(r => (
             <li key={r.id} className="rounded-xl border p-4 hover:shadow">
-              <Link href={`/resources/${r.slug}`} className="block">
+              <Link href={`/resources/${r.id}`} className="block">
                 {r.logo_url && (
                   <Image
                     src={r.logo_url}
@@ -60,8 +59,6 @@ export default async function ResourcesPage() {
                     width={40}
                     height={40}
                     className="mb-2 h-10 w-10 object-contain"
-                    // Avoid next.config domain setup for now:
-                    unoptimized
                   />
                 )}
                 <div className="font-medium">{r.title}</div>
@@ -69,7 +66,9 @@ export default async function ResourcesPage() {
                   <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
                 )}
                 <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
-                <div className="mt-2 text-xs text-gray-400">{new Date(r.created_at).toLocaleString()}</div>
+                <div className="mt-2 text-xs text-gray-400">
+                  {new Date(r.created_at).toLocaleString()}
+                </div>
               </Link>
             </li>
           ))}
