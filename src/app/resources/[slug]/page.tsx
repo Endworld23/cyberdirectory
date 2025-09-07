@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import VoteButtons from '@/components/VoteButtons'
 import CommentsSection from '@/components/CommentsSection'
+import SaveButton from '@/components/SaveButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,6 +118,18 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
     initialVoted = !!mine
   }
 
+  // Saved?
+  let initialSaved = false
+  if (auth?.user) {
+    const { data: fav } = await s
+      .from('favorites')
+      .select('user_id')
+      .eq('user_id', auth.user.id)
+      .eq('resource_id', r.id)
+      .maybeSingle()
+    initialSaved = !!fav
+  }
+
   // JSON-LD (CreativeWork baseline)
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -171,9 +184,12 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
 
           {r.description && <p className="text-gray-700">{r.description}</p>}
 
-          <a href={`/go/${r.id}`} className="inline-block rounded-md bg-black px-4 py-2 text-white">
-            Visit Site
-          </a>
+          <div className="flex items-center gap-2">
+            <a href={`/go/${r.id}`} className="inline-block rounded-md bg-black px-4 py-2 text-white">
+              Visit Site
+            </a>
+            <SaveButton resourceId={r.id} initialSaved={initialSaved} />
+          </div>
         </div>
 
         {/* Votes */}

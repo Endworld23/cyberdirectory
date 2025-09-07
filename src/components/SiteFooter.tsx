@@ -10,6 +10,7 @@ export function SiteFooter() {
           <Link href="/resources" className="hover:text-black">Resources</Link>
           <Link href="/tags" className="hover:text-black">Tags</Link>
           <Link href="/categories" className="hover:text-black">Categories</Link>
+          <Link href="/me/saves" className="hover:text-black">My saves</Link>
           <a href="/rss.xml" className="hover:text-black">RSS</a>
           <a href="/sitemap.xml" className="hover:text-black">Sitemap</a>
         </nav>
