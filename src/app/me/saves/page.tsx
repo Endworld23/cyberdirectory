@@ -8,7 +8,12 @@ export const dynamic = 'force-dynamic'
 export default async function MySavesPage() {
   const s = await createClientServer()
   const { data: auth } = await s.auth.getUser()
-  if (!auth?.user) redirect('/login') // change this route if you use a different auth page
+
+  // If not signed in, send to login and come back here after auth.
+  if (!auth?.user) {
+    const nextPath = '/me/saves'
+    redirect(`/login?next=${encodeURIComponent(nextPath)}`)
+  }
 
   // Get saved resource IDs
   const { data: favs } = await s
@@ -18,6 +23,7 @@ export default async function MySavesPage() {
     .order('created_at', { ascending: false })
 
   const ids = (favs ?? []).map((f) => f.resource_id as string)
+
   if (ids.length === 0) {
     return (
       <main className="mx-auto max-w-4xl p-6">
@@ -43,10 +49,18 @@ export default async function MySavesPage() {
           <li key={r.id} className="rounded-xl border p-4 hover:shadow">
             <Link href={`/resources/${r.slug}`} className="block">
               {r.logo_url && (
-                <Image src={r.logo_url} alt={`${r.title} logo`} width={40} height={40} className="mb-2 h-10 w-10 object-contain" />
+                <Image
+                  src={r.logo_url}
+                  alt={`${r.title} logo`}
+                  width={40}
+                  height={40}
+                  className="mb-2 h-10 w-10 object-contain"
+                />
               )}
               <div className="font-medium">{r.title}</div>
-              {r.description && <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>}
+              {r.description && (
+                <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
+              )}
               <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
             </Link>
           </li>

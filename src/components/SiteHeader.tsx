@@ -1,39 +1,39 @@
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Shield, LogOut, LogIn } from 'lucide-react';
-import { createClientBrowser } from '@/lib/supabase-browser';
-import { useEffect, useState } from 'react';
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Shield, LogOut, LogIn } from 'lucide-react'
+import { createClientBrowser } from '@/lib/supabase-browser'
+import { useEffect, useState } from 'react'
 
 export function SiteHeader() {
-  const supabase = createClientBrowser();
-  const pathname = usePathname();
-  const [isAuthed, setAuthed] = useState(false);
-  const [isAdmin, setAdmin] = useState(false);
+  const supabase = createClientBrowser()
+  const pathname = usePathname()
+  const [isAuthed, setAuthed] = useState(false)
+  const [isAdmin, setAdmin] = useState(false)
 
   useEffect(() => {
-    let active = true;
+    let active = true
     supabase.auth.getUser().then(async ({ data }) => {
-      const user = data.user;
-      if (!active) return;
-      setAuthed(!!user);
+      const user = data.user
+      if (!active) return
+      setAuthed(!!user)
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
           .select('is_admin')
           .eq('id', user.id)
-          .maybeSingle();
-        if (active) setAdmin(!!profile?.is_admin);
+          .maybeSingle()
+        if (active) setAdmin(!!profile?.is_admin)
       } else {
-        setAdmin(false);
+        setAdmin(false)
       }
-    });
-    return () => { active = false; };
-  }, [pathname, supabase]);
+    })
+    return () => { active = false }
+  }, [pathname, supabase])
 
   const NavLink = ({ href, label }: { href: string; label: string }) => {
-    const active = pathname === href;
+    const active = pathname === href
     return (
       <Link
         href={href}
@@ -43,8 +43,8 @@ export function SiteHeader() {
       >
         {label}
       </Link>
-    );
-  };
+    )
+  }
 
   return (
     <header className="border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
@@ -58,14 +58,17 @@ export function SiteHeader() {
 
         <nav className="flex items-center gap-1">
           <NavLink href="/resources" label="Resources" />
+          <NavLink href="/tags" label="Tags" />
+          <NavLink href="/categories" label="Categories" />
           <NavLink href="/submit" label="Submit" />
           {isAdmin && <NavLink href="/admin/submissions" label="Admin" />}
+          {isAuthed && <NavLink href="/me/saves" label="My saves" />}
         </nav>
 
         <div className="flex items-center gap-2">
           {!isAuthed ? (
             <Link
-              href="/login"
+              href={`/login?next=${encodeURIComponent(pathname || '/')}`}
               className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             >
               <LogIn size={16} />
@@ -74,8 +77,8 @@ export function SiteHeader() {
           ) : (
             <button
               onClick={async () => {
-                await supabase.auth.signOut();
-                window.location.href = '/';
+                await supabase.auth.signOut()
+                window.location.href = '/'
               }}
               className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-black"
             >
@@ -86,5 +89,5 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
-  );
+  )
 }
