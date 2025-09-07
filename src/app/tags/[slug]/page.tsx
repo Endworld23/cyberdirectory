@@ -5,55 +5,40 @@ import { createClientServer } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
-type Tag = { id: string; slug: string; name: string }
-type ResourceRow = {
-  id: string
-  slug: string
-  title: string
-  description: string | null
-  url: string
-  logo_url: string | null
-  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
-  created_at: string
-}
-
 const PAGE_SIZE = 24
-function qs(obj: Record<string, string | undefined>) {
-  const p = new URLSearchParams()
-  Object.entries(obj).forEach(([k, v]) => v ? p.set(k, v) : void 0)
-  return p.toString()
-}
+type SearchParams = { q?: string; page?: string }
 
-export default async function TagPage({
+export default async function TagDetailPage({
   params,
-  searchParams,
+  searchParams
 }: {
   params: { slug: string }
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams: SearchParams
 }) {
   const s = await createClientServer()
 
-  const { data: tg, error: te } = await s
+  // Find tag
+  const { data: tag, error: eTag } = await s
     .from('tags')
-    .select('id, slug, name')
+    .select('id, name, slug')
     .eq('slug', params.slug)
-    .single()
-  if (te || !tg) return notFound()
-  const tag = tg as Tag
+    .maybeSingle()
+  if (eTag || !tag) return notFound()
 
-  const pageNum = Number(Array.isArray(searchParams?.page) ? searchParams?.page[0] : searchParams?.page) || 1
-  const page = Math.max(1, pageNum)
+  // Pagination / search
+  const q = (searchParams.q ?? '').trim()
+  const page = Math.max(1, Number(searchParams.page ?? '1') || 1)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  // Get all resource ids for this tag
-  const { data: linkRows } = await s
+  // Resource ids for this tag
+  const { data: links } = await s
     .from('resource_tags')
     .select('resource_id')
     .eq('tag_id', tag.id)
+  const resourceIds = (links ?? []).map(r => r.resource_id as string)
 
-  const ids = (linkRows ?? []).map(r => r.resource_id as string)
-  if (ids.length === 0) {
+  if (resourceIds.length === 0) {
     return (
       <main className="mx-auto max-w-4xl p-6 space-y-6">
         <header>
@@ -66,28 +51,42 @@ export default async function TagPage({
     )
   }
 
-  const { data, error } = await s
-    .from('resources')
-    .select('id, slug, title, description, url, logo_url, pricing, created_at')
-    .in('id', ids)
+  // Query from stats view to get votes/comments counts
+  let query = s
+    .from('resource_public_stats')
+    .select('id, slug, title, description, url, logo_url, pricing, votes_count, comments_count', { count: 'exact' })
+    .in('id', resourceIds)
+  // (resources in the stats view are already filtered by is_approved in the counts view; we keep it explicit)
     .eq('is_approved', true)
+
+  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+
+  const { data: rows, count, error } = await query
     .order('created_at', { ascending: false })
     .range(from, to)
+
   if (error) return notFound()
 
-  const rows = (data ?? []) as ResourceRow[]
+  const total = count ?? 0
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <main className="mx-auto max-w-4xl p-6 space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">
-          Tag: <span className="text-gray-700">{tag.name}</span>
-        </h1>
-        <p className="text-sm text-gray-600">Newest first</p>
+      <header className="flex items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Tag: <span className="text-gray-700">{tag.name}</span>
+          </h1>
+          <p className="text-sm text-gray-600">Newest first</p>
+        </div>
+        <form action={`/tags/${params.slug}`} className="flex gap-2">
+          <input name="q" defaultValue={q} placeholder="Search in this tag" className="border rounded-xl px-3 py-2 text-sm" />
+          <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Search</button>
+        </form>
       </header>
 
       <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {rows.map(r => (
+        {(rows ?? []).map(r => (
           <li key={r.id} className="rounded-xl border p-4 hover:shadow">
             <Link href={`/resources/${r.slug}`} className="block">
               {r.logo_url && (
@@ -96,20 +95,33 @@ export default async function TagPage({
               <div className="font-medium">{r.title}</div>
               {r.description && <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>}
               <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
-              <div className="mt-2 text-xs text-gray-400">{new Date(r.created_at).toLocaleString()}</div>
+              <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
+                <span>👍 {r.votes_count ?? 0}</span>
+                <span>💬 {r.comments_count ?? 0}</span>
+              </div>
             </Link>
           </li>
         ))}
       </ul>
 
-      <div className="flex justify-end gap-2">
-        {page > 1 && (
-          <Link href={`/tags/${tag.slug}?${qs({ page: String(page - 1) })}`} className="rounded border px-3 py-2">Prev</Link>
-        )}
-        {rows.length === PAGE_SIZE && (
-          <Link href={`/tags/${tag.slug}?${qs({ page: String(page + 1) })}`} className="rounded border px-3 py-2">Next</Link>
-        )}
-      </div>
+      <Pager base={`/tags/${params.slug}`} page={page} pageCount={pageCount} params={{ q }} />
     </main>
+  )
+}
+
+function Pager({ base, page, pageCount, params }: { base: string; page: number; pageCount: number; params: { q: string } }) {
+  const mk = (p: number) => {
+    const u = new URLSearchParams()
+    if (params.q) u.set('q', params.q)
+    u.set('page', String(p))
+    return `${base}?${u.toString()}`
+  }
+  if (pageCount <= 1) return null
+  return (
+    <nav className="mt-6 flex items-center gap-2">
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">Prev</a>
+      <span className="text-sm text-gray-600">Page {page} / {pageCount}</span>
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">Next</a>
+    </nav>
   )
 }

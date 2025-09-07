@@ -69,7 +69,7 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
     .select('id, slug, title, description, url, logo_url, pricing, is_approved, category_id')
     .eq('slug', params.slug)
     .eq('is_approved', true)
-    .single()
+    .single<ResourceRow>()
   if (error || !r) return notFound()
 
   // Load category (optional)
@@ -99,6 +99,24 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
     tags = (tagRows ?? []) as TagRow[]
   }
 
+  // Votes: count + did current user vote
+  const { count: voteCount } = await s
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .eq('resource_id', r.id)
+
+  const { data: auth } = await s.auth.getUser()
+  let initialVoted = false
+  if (auth?.user) {
+    const { data: mine } = await s
+      .from('votes')
+      .select('id')
+      .eq('resource_id', r.id)
+      .eq('user_id', auth.user.id)
+      .maybeSingle()
+    initialVoted = !!mine
+  }
+
   // JSON-LD (CreativeWork baseline)
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -113,7 +131,7 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
   return (
     <main className="mx-auto max-w-3xl space-y-8 p-6">
       <header className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-3">
             {r.logo_url && (
               <Image
@@ -124,7 +142,7 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
                 className="h-12 w-12 object-contain"
               />
             )}
-            <h1 className="text-2xl font-bold">{r.title}</h1>
+            <h1 className="text-2xl font-bold truncate">{r.title}</h1>
           </div>
 
           {/* Meta chips */}
@@ -159,11 +177,18 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
         </div>
 
         {/* Votes */}
-        <VoteButtons targetType="resource" resourceId={r.id} />
+        <VoteButtons
+          resourceId={r.id}
+          initialCount={voteCount ?? 0}
+          initialVoted={initialVoted}
+        />
       </header>
 
       {/* Comments */}
-      <CommentsSection resourceId={r.id} />
+      <section>
+        <h2 className="text-lg font-medium mb-2">Comments</h2>
+        <CommentsSection resourceId={r.id} />
+      </section>
 
       {/* JSON-LD */}
       <script

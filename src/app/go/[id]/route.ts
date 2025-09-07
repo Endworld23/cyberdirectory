@@ -1,31 +1,41 @@
-import { headers } from 'next/headers'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClientServer } from '@/lib/supabase-server'
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export const dynamic = 'force-dynamic'
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const s = await createClientServer()
 
-  const { data: r } = await s
+  // Look up destination URL
+  const { data: resRow } = await s
     .from('resources')
-    .select('id, url')
+    .select('url')
     .eq('id', params.id)
-    .single()
+    .maybeSingle()
 
-  if (!r?.url) {
-    // Fallback to home if the id is bad
-    return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_SITE_URL))
-  }
+  const dest = resRow?.url ?? '/'
 
+  // Best-effort click log (ignore errors)
   try {
-    // Next 15: headers() is async
-    const h = await headers()
-    const ip = (h.get('x-forwarded-for') ?? '').split(',')[0] || null
-    const ua = h.get('user-agent') ?? null
-    const ref = h.get('referer') ?? null
-    await s.from('clicks').insert({ resource_id: r.id, ip, ua, referrer: ref })
+    const referer = req.headers.get('referer') ?? null
+    const userAgent = req.headers.get('user-agent') ?? null
+    const ipHeader = req.headers.get('x-forwarded-for')
+    const ip = ipHeader ? ipHeader.split(',')[0].trim() : null
+
+    const { data: auth } = await s.auth.getUser()
+
+    await s.from('clicks').insert({
+      resource_id: params.id,
+      user_id: auth?.user?.id ?? null,
+      referer,
+      user_agent: userAgent,
+      ip
+    })
   } catch {
-    // best-effort logging only
+    // swallow logging errors
   }
 
-  return NextResponse.redirect(r.url, { status: 302 })
+  // Redirect (supports relative or absolute dest)
+  const target = dest.startsWith('http') ? dest : new URL(dest, req.url).toString()
+  return NextResponse.redirect(target)
 }

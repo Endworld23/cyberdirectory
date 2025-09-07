@@ -2,65 +2,117 @@ import { createClientServer } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
-type Row = {
-  resource_id: string
+type AdminStatRow = {
+  id: string
   title: string
-  slug: string
-  total_clicks: number
-  last_click: string | null
+  votes_count: number | null
+  comments_count: number | null
+  clicks_count: number | null
 }
 
-export default async function AdminAnalytics() {
-  const s = await createClientServer()
-  const { data, error } = await s.rpc('admin_click_stats')
+type ClickRowRaw = {
+  resource_id: string
+  // Supabase sometimes types/returns the nested relation as an array; accept both and normalize.
+  resources: { title: string } | { title: string }[] | null
+}
 
-  if (error) {
-    return <div className="p-6 text-red-600">Failed to load analytics: {error.message}</div>
+export default async function AdminAnalyticsPage() {
+  const s = await createClientServer()
+
+  // Top overall from view (clicks, votes, comments)
+  const { data: adminStats, error: e2 } = await s
+    .from('resource_admin_stats')
+    .select('id, title, votes_count, comments_count, clicks_count')
+    .order('clicks_count', { ascending: false })
+    .limit(50)
+
+  if (e2) {
+    return <div className="p-6 text-red-600">Error: {e2.message}</div>
   }
 
-  const rows = (data ?? []) as Row[]
+  // Top by clicks (last 30 days)
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
+  const { data: clicks30d, error: e1 } = await s
+    .from('clicks')
+    .select('resource_id, resources ( title )')
+    .gte('created_at', since)
+
+  if (e1) {
+    return <div className="p-6 text-red-600">Error: {e1.message}</div>
+  }
+
+  // Normalize nested resources to a single title
+  const list = (clicks30d ?? []) as ClickRowRaw[]
+  const agg: Record<string, { title: string; clicks: number }> = {}
+
+  for (const row of list) {
+    const nested = row.resources
+    const title = Array.isArray(nested)
+      ? (nested[0]?.title ?? 'Unknown')
+      : (nested?.title ?? 'Unknown')
+
+    if (!agg[row.resource_id]) agg[row.resource_id] = { title, clicks: 0 }
+    agg[row.resource_id].clicks += 1
+  }
+
+  const topClicksRows = Object.entries(agg)
+    .map(([id, v]) => ({ id, title: v.title, clicks: v.clicks }))
+    .sort((a, b) => b.clicks - a.clicks)
+    .slice(0, 20)
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-semibold mb-4">Resource Analytics</h1>
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2 text-left">Resource</th>
-              <th className="px-3 py-2 text-left">Slug</th>
-              <th className="px-3 py-2 text-right">Clicks</th>
-              <th className="px-3 py-2 text-left">Last Click</th>
-              <th className="px-3 py-2 text-left">Actions</th>
+    <main className="mx-auto max-w-5xl p-6 space-y-8">
+      <h1 className="text-2xl font-semibold">Analytics (Admin)</h1>
+
+      <section>
+        <h2 className="text-lg font-medium">Top by clicks (last 30 days)</h2>
+        <table className="mt-3 w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-1 pr-3">Title</th>
+              <th className="py-1 pr-3">Clicks</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.resource_id} className="border-t">
-                <td className="px-3 py-2">{r.title}</td>
-                <td className="px-3 py-2 text-gray-600">{r.slug}</td>
-                <td className="px-3 py-2 text-right">{r.total_clicks ?? 0}</td>
-                <td className="px-3 py-2">{r.last_click ? new Date(r.last_click).toLocaleString() : '—'}</td>
-                <td className="px-3 py-2">
-                  <a
-                    href={`/resources/${r.slug}`}
-                    className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
-                  >
-                    View
-                  </a>
-                </td>
+            {topClicksRows.map(r => (
+              <tr key={r.id} className="border-t">
+                <td className="py-1 pr-3">{r.title}</td>
+                <td className="py-1 pr-3">{r.clicks}</td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td className="px-3 py-6 text-center text-gray-600" colSpan={5}>
-                  No click data yet.
-                </td>
-              </tr>
+            {topClicksRows.length === 0 && (
+              <tr><td colSpan={2} className="py-3 text-gray-600">No data yet.</td></tr>
             )}
           </tbody>
         </table>
-      </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium">Top overall (clicks, votes, comments)</h2>
+        <table className="mt-3 w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-1 pr-3">Title</th>
+              <th className="py-1 pr-3">Clicks</th>
+              <th className="py-1 pr-3">Votes</th>
+              <th className="py-1 pr-3">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(adminStats as AdminStatRow[] ?? []).map(r => (
+              <tr key={r.id} className="border-t">
+                <td className="py-1 pr-3">{r.title}</td>
+                <td className="py-1 pr-3">{r.clicks_count ?? 0}</td>
+                <td className="py-1 pr-3">{r.votes_count ?? 0}</td>
+                <td className="py-1 pr-3">{r.comments_count ?? 0}</td>
+              </tr>
+            ))}
+            {(!adminStats || adminStats.length === 0) && (
+              <tr><td colSpan={4} className="py-3 text-gray-600">No data yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </section>
     </main>
   )
 }
