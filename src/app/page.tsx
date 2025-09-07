@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClientServer } from '@/lib/supabase-server'
+import SearchBox from '@/components/SearchBox'   // <-- add
 
 export const dynamic = 'force-dynamic'
 
@@ -27,14 +28,10 @@ export default async function HomePage() {
         <p className="mt-2 text-gray-600">
           Curated tools, platforms, and courses — searchable and community-rated.
         </p>
-        <form action="/resources" className="mx-auto mt-6 flex max-w-xl gap-2">
-          <input
-            name="q"
-            placeholder="Search tools, platforms, courses…"
-            className="flex-1 rounded-xl border px-3 py-2"
-          />
-          <button className="rounded-xl bg-black px-4 py-2 text-white">Search</button>
-        </form>
+
+        <div className="mx-auto mt-6 flex max-w-xl">
+          <SearchBox />
+        </div>
       </section>
 
       {/* Top categories */}
@@ -46,12 +43,8 @@ export default async function HomePage() {
           </Link>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(cats ?? []).map(c => (
-            <Link
-              key={c.slug}
-              href={`/categories/${c.slug}`}
-              className="rounded-full border px-3 py-1 text-sm hover:bg-gray-50"
-            >
+          {(cats ?? []).map((c) => (
+            <Link key={c.slug} href={`/categories/${c.slug}`} className="rounded-full border px-3 py-1 text-sm hover:bg-gray-50">
               #{c.name}
             </Link>
           ))}
@@ -68,25 +61,15 @@ export default async function HomePage() {
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {latest!.map(r => (
+            {latest!.map((r) => (
               <li key={r.id} className="rounded-xl border p-4 hover:shadow">
                 <Link href={`/resources/${r.slug}`} className="block">
                   {r.logo_url && (
-                    <Image
-                      src={r.logo_url}
-                      alt={`${r.title} logo`}
-                      width={40}
-                      height={40}
-                      className="mb-2 h-10 w-10 object-contain"
-                    />
+                    <Image src={r.logo_url} alt={`${r.title} logo`} width={40} height={40} className="mb-2 h-10 w-10 object-contain" />
                   )}
                   <div className="font-medium">{r.title}</div>
-                  {r.description && (
-                    <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
-                  )}
-                  <div className="mt-2 text-xs text-gray-400">
-                    {new Date(r.created_at).toLocaleDateString()}
-                  </div>
+                  {r.description && <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>}
+                  <div className="mt-2 text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</div>
                 </Link>
               </li>
             ))}

@@ -10,7 +10,7 @@ type SearchParams = { q?: string; page?: string }
 
 export default async function TagDetailPage({
   params,
-  searchParams
+  searchParams,
 }: {
   params: { slug: string }
   searchParams: SearchParams
@@ -32,17 +32,16 @@ export default async function TagDetailPage({
   const to = from + PAGE_SIZE - 1
 
   // Resource ids for this tag
-  const { data: links } = await s
-    .from('resource_tags')
-    .select('resource_id')
-    .eq('tag_id', tag.id)
-  const resourceIds = (links ?? []).map(r => r.resource_id as string)
+  const { data: links } = await s.from('resource_tags').select('resource_id').eq('tag_id', tag.id)
+  const resourceIds = (links ?? []).map((r) => r.resource_id as string)
 
   if (resourceIds.length === 0) {
     return (
       <main className="mx-auto max-w-4xl p-6 space-y-6">
         <header>
-          <h1 className="text-2xl font-semibold">Tag: <span className="text-gray-700">{tag.name}</span></h1>
+          <h1 className="text-2xl font-semibold">
+            Tag: <span className="text-gray-700">{tag.name}</span>
+          </h1>
         </header>
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
           No resources tagged with “{tag.name}” yet.
@@ -56,15 +55,12 @@ export default async function TagDetailPage({
     .from('resource_public_stats')
     .select('id, slug, title, description, url, logo_url, pricing, votes_count, comments_count', { count: 'exact' })
     .in('id', resourceIds)
-  // (resources in the stats view are already filtered by is_approved in the counts view; we keep it explicit)
     .eq('is_approved', true)
 
-  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+  // Full-text search on generated tsvector
+  if (q) query = query.textSearch('search_vec', q, { type: 'websearch' })
 
-  const { data: rows, count, error } = await query
-    .order('created_at', { ascending: false })
-    .range(from, to)
-
+  const { data: rows, count, error } = await query.order('created_at', { ascending: false }).range(from, to)
   if (error) return notFound()
 
   const total = count ?? 0
@@ -86,7 +82,7 @@ export default async function TagDetailPage({
       </header>
 
       <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {(rows ?? []).map(r => (
+        {(rows ?? []).map((r) => (
           <li key={r.id} className="rounded-xl border p-4 hover:shadow">
             <Link href={`/resources/${r.slug}`} className="block">
               {r.logo_url && (
@@ -109,7 +105,17 @@ export default async function TagDetailPage({
   )
 }
 
-function Pager({ base, page, pageCount, params }: { base: string; page: number; pageCount: number; params: { q: string } }) {
+function Pager({
+  base,
+  page,
+  pageCount,
+  params,
+}: {
+  base: string
+  page: number
+  pageCount: number
+  params: { q: string }
+}) {
   const mk = (p: number) => {
     const u = new URLSearchParams()
     if (params.q) u.set('q', params.q)
@@ -119,9 +125,15 @@ function Pager({ base, page, pageCount, params }: { base: string; page: number; 
   if (pageCount <= 1) return null
   return (
     <nav className="mt-6 flex items-center gap-2">
-      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">Prev</a>
-      <span className="text-sm text-gray-600">Page {page} / {pageCount}</span>
-      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">Next</a>
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Prev
+      </a>
+      <span className="text-sm text-gray-600">
+        Page {page} / {pageCount}
+      </span>
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Next
+      </a>
     </nav>
   )
 }

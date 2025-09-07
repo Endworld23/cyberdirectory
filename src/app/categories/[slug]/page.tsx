@@ -10,7 +10,7 @@ type SearchParams = { q?: string; page?: string }
 
 export default async function CategoryDetailPage({
   params,
-  searchParams
+  searchParams,
 }: {
   params: { slug: string }
   searchParams: SearchParams
@@ -37,12 +37,10 @@ export default async function CategoryDetailPage({
     .eq('category_id', cat.id)
     .eq('is_approved', true)
 
-  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+  // Full-text search on generated tsvector
+  if (q) query = query.textSearch('search_vec', q, { type: 'websearch' })
 
-  const { data: rows, count, error } = await query
-    .order('created_at', { ascending: false })
-    .range(from, to)
-
+  const { data: rows, count, error } = await query.order('created_at', { ascending: false }).range(from, to)
   if (error) return notFound()
 
   const total = count ?? 0
@@ -67,7 +65,7 @@ export default async function CategoryDetailPage({
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">No resources in this category yet.</div>
       ) : (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {rows.map(r => (
+          {rows.map((r) => (
             <li key={r.id} className="rounded-xl border p-4 hover:shadow">
               <Link href={`/resources/${r.slug}`} className="block">
                 {r.logo_url && (
@@ -91,7 +89,17 @@ export default async function CategoryDetailPage({
   )
 }
 
-function Pager({ base, page, pageCount, params }: { base: string; page: number; pageCount: number; params: { q: string } }) {
+function Pager({
+  base,
+  page,
+  pageCount,
+  params,
+}: {
+  base: string
+  page: number
+  pageCount: number
+  params: { q: string }
+}) {
   const mk = (p: number) => {
     const u = new URLSearchParams()
     if (params.q) u.set('q', params.q)
@@ -101,9 +109,15 @@ function Pager({ base, page, pageCount, params }: { base: string; page: number; 
   if (pageCount <= 1) return null
   return (
     <nav className="mt-6 flex items-center gap-2">
-      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">Prev</a>
-      <span className="text-sm text-gray-600">Page {page} / {pageCount}</span>
-      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">Next</a>
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Prev
+      </a>
+      <span className="text-sm text-gray-600">
+        Page {page} / {pageCount}
+      </span>
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Next
+      </a>
     </nav>
   )
 }
