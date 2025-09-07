@@ -7,16 +7,48 @@ import CommentsSection from '@/components/CommentsSection'
 
 export const dynamic = 'force-dynamic'
 
+type ResourceRow = {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  url: string
+  logo_url: string | null
+  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
+  is_approved: boolean | null
+}
+
 export default async function ResourceBySlug({ params }: { params: { slug: string } }) {
   const s = await createClientServer()
-  const { data: r, error } = await s
+
+  // Load resource
+  const { data: r, error: eRes } = await s
     .from('resources')
     .select('id, slug, title, description, url, logo_url, pricing, is_approved')
     .eq('slug', params.slug)
     .eq('is_approved', true)
-    .single()
+    .maybeSingle<ResourceRow>()
 
-  if (error || !r) return notFound()
+  if (eRes || !r) return notFound()
+
+  // Vote count
+  const { count: voteCount } = await s
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .eq('resource_id', r.id)
+
+  // Did I vote?
+  const { data: auth } = await s.auth.getUser()
+  let initialVoted = false
+  if (auth?.user) {
+    const { data: mine } = await s
+      .from('votes')
+      .select('id')
+      .eq('resource_id', r.id)
+      .eq('user_id', auth.user.id)
+      .maybeSingle()
+    initialVoted = !!mine
+  }
 
   return (
     <main className="mx-auto max-w-3xl space-y-8 p-6">
@@ -41,8 +73,12 @@ export default async function ResourceBySlug({ params }: { params: { slug: strin
           </a>
         </div>
 
-        {/* Votes */}
-        <VoteButtons targetType="resource" resourceId={r.id} />
+        {/* Votes (no targetType prop) */}
+        <VoteButtons
+          resourceId={r.id}
+          initialCount={voteCount ?? 0}
+          initialVoted={initialVoted}
+        />
       </header>
 
       {/* Comments */}

@@ -5,94 +5,90 @@ import { createClientBrowser } from '@/lib/supabase-browser'
 
 type CommentRow = {
   id: string
-  resource_id: string
-  user_id: string | null
   body: string
   created_at: string
+  user_id: string | null
 }
 
 export default function CommentsSection({ resourceId }: { resourceId: string }) {
-  const supabase = createClientBrowser()
+  const sb = createClientBrowser()
   const [rows, setRows] = useState<CommentRow[]>([])
   const [body, setBody] = useState('')
-  const [posting, setPosting] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  // load comments
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('id, resource_id, user_id, body, created_at')
-        .eq('resource_id', resourceId)
-        .is('parent_id', null)
-        .order('created_at', { ascending: false })
-      if (!mounted) return
-      if (error) setErr(error.message)
-      else setRows((data ?? []) as CommentRow[])
-    })()
-    return () => { mounted = false }
-  }, [resourceId, supabase])
-
-  async function post() {
-    setErr(null)
-    if (!body.trim()) return
-    setPosting(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname)
-      return
-    }
-
-    const { data, error } = await supabase
+  async function load() {
+    const { data, error } = await sb
       .from('comments')
-      .insert([{ resource_id: resourceId, user_id: user.id, body: body.trim() }])
-      .select('id, resource_id, user_id, body, created_at')
-      .single()
+      .select('id, body, created_at, user_id')
+      .eq('resource_id', resourceId)
+      .order('created_at', { ascending: false })
+    if (!error) setRows(data || [])
+  }
 
-    setPosting(false)
-    if (error) setErr(error.message)
-    else {
+  useEffect(() => {
+    void load()
+    const ch = sb
+      .channel(`comments_${resourceId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'comments', filter: `resource_id=eq.${resourceId}` },
+        () => { void load() }
+      )
+      .subscribe()
+    return () => { sb.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resourceId])
+
+  function getErrorMessage(e: unknown) {
+    return e instanceof Error ? e.message : 'Unable to comment.'
+  }
+
+  async function post(e: React.FormEvent) {
+    e.preventDefault()
+    if (!body.trim() || busy) return
+    setBusy(true)
+    try {
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) throw new Error('Please sign in to comment')
+
+      const { error } = await sb
+        .from('comments')
+        .insert({ resource_id: resourceId, user_id: user.id, body })
+      if (error) throw error
+
       setBody('')
-      setRows((prev) => [data as CommentRow, ...prev])
+      await load()
+    } catch (e: unknown) {
+      alert(getErrorMessage(e))
+    } finally {
+      setBusy(false)
     }
   }
 
   return (
-    <section className="mt-8">
-      <h2 className="text-xl font-semibold">Comments</h2>
-
-      <div className="mt-3 rounded-xl border p-3">
-        <textarea
+    <section className="space-y-3">
+      <form onSubmit={post} className="flex gap-2">
+        <input
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Share your experience…"
-          rows={3}
-          className="w-full resize-y rounded-xl border px-3 py-2"
+          placeholder="Add a comment…"
+          className="flex-1 border rounded-xl px-3 py-2"
         />
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            onClick={post}
-            disabled={posting}
-            className="rounded bg-black px-3 py-1.5 text-white"
-          >
-            {posting ? 'Posting…' : 'Post'}
-          </button>
-          {err && <span className="text-sm text-red-600">{err}</span>}
-        </div>
-      </div>
+        <button disabled={busy || !body.trim()} className="rounded-xl bg-black text-white px-3 py-2">
+          Post
+        </button>
+      </form>
 
-      <ul className="mt-4 space-y-3">
-        {rows.map((c) => (
-          <li key={c.id} className="rounded-xl border p-3">
-            <div className="text-sm text-gray-700 whitespace-pre-wrap">{c.body}</div>
-            <div className="mt-1 text-xs text-gray-500">{new Date(c.created_at).toLocaleString()}</div>
+      <ul className="space-y-3">
+        {rows.map(r => (
+          <li key={r.id} className="rounded-xl border p-3">
+            <p className="text-sm">{r.body}</p>
+            <div className="mt-1 text-xs text-gray-500">
+              {new Date(r.created_at).toLocaleString()}
+            </div>
           </li>
         ))}
-        {rows.length === 0 && (
-          <li className="text-sm text-gray-500">No comments yet. Be the first!</li>
-        )}
+        {rows.length === 0 && <li className="text-sm text-gray-600">No comments yet.</li>}
       </ul>
     </section>
   )
