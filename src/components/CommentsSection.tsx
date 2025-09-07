@@ -39,27 +39,25 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourceId])
 
-  function getErrorMessage(e: unknown) {
-    return e instanceof Error ? e.message : 'Unable to comment.'
-  }
-
   async function post(e: React.FormEvent) {
     e.preventDefault()
-    if (!body.trim() || busy) return
+    const text = body.trim()
+    if (!text || busy) return
     setBusy(true)
     try {
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) throw new Error('Please sign in to comment')
-
-      const { error } = await sb
-        .from('comments')
-        .insert({ resource_id: resourceId, user_id: user.id, body })
-      if (error) throw error
-
+      const res = await fetch('/api/comments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resourceId, content: text }),
+      })
+      if (res.status === 401) return alert('Please sign in to comment.')
+      if (res.status === 403) return alert('Please verify your email to comment.')
+      const json: { ok?: boolean; error?: string } = await res.json()
+      if (!json.ok) {
+        return alert(json.error || 'Unable to post comment.')
+      }
       setBody('')
       await load()
-    } catch (e: unknown) {
-      alert(getErrorMessage(e))
     } finally {
       setBusy(false)
     }
@@ -80,7 +78,7 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
       </form>
 
       <ul className="space-y-3">
-        {rows.map(r => (
+        {rows.map((r) => (
           <li key={r.id} className="rounded-xl border p-3">
             <p className="text-sm">{r.body}</p>
             <div className="mt-1 text-xs text-gray-500">
