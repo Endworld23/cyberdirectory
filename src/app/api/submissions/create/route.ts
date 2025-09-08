@@ -51,6 +51,15 @@ function ensureProtocol(u: string) {
   }
 }
 
+function hostFrom(u: string) {
+  try {
+    const h = new URL(u).host.toLowerCase()
+    return h.startsWith('www.') ? h.slice(4) : h
+  } catch {
+    return ''
+  }
+}
+
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -103,6 +112,49 @@ export async function POST(req: NextRequest) {
     new URL(urlNormalized)
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid URL' }, { status: 400 })
+  }
+
+  const urlHost = hostFrom(urlNormalized)
+
+  // --- Duplicate checks (resources + pending submissions) ---
+  if (urlHost) {
+    // 1) Approved resource with same host (or exact URL)
+    const { data: r1 } = await s
+      .from('resources')
+      .select('id, slug, title, url')
+      .eq('is_approved', true)
+      .or(`url.ilike.%://${urlHost}%,url.eq.${urlNormalized}`)
+      .limit(1)
+
+    if (r1 && r1.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'A resource with this URL already exists.',
+          conflict: { type: 'resource', slug: r1[0].slug, title: r1[0].title, url: r1[0].url },
+        },
+        { status: 409 }
+      )
+    }
+
+    // 2) Pending submission with same host (avoid review duplicates)
+    const { data: s1 } = await s
+      .from('submissions')
+      .select('id, title, url, status')
+      .eq('status', 'pending')
+      .ilike('url', `%://${urlHost}%`)
+      .limit(1)
+
+    if (s1 && s1.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'There is already a pending submission for this site.',
+          conflict: { type: 'submission', id: s1[0].id, title: s1[0].title, url: s1[0].url },
+        },
+        { status: 409 }
+      )
+    }
   }
 
   // Optional fields
