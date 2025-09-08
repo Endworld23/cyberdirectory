@@ -1,3 +1,4 @@
+// cspell:words supabase websearch tsvector ilike
 import Link from 'next/link'
 import Image from 'next/image'
 import { notFound } from 'next/navigation'
@@ -8,7 +9,21 @@ export const dynamic = 'force-dynamic'
 const PAGE_SIZE = 24
 
 type Params = { slug: string }
-type Search = { q?: string | string[]; page?: string | string[] }
+type Search = { q?: string | string[]; page?: string | string[]; sort?: 'trending' | 'new' | 'top' }
+
+// Shape of rows coming back from resource_trending / resource_public_stats
+type Row = {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  url?: string
+  logo_url: string | null
+  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
+  votes_count?: number | null
+  comments_count?: number | null
+  trending_score?: number | null
+}
 
 export default async function CategoryDetailPage(props: {
   params: Promise<Params>
@@ -29,29 +44,36 @@ export default async function CategoryDetailPage(props: {
   if (eCat || !cat) return notFound()
 
   const q = (Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q ?? '').trim()
+  const sort = (Array.isArray(searchParams.sort) ? searchParams.sort[0] : searchParams.sort) as 'trending'|'new'|'top' || 'trending'
   const pageNum = Number(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page ?? '1') || 1
   const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  // Query resources by category from stats view
+  // Choose source view based on sort
+  const table = sort === 'trending' ? 'resource_trending' : 'resource_public_stats'
+
   let query = s
-    .from('resource_public_stats')
-    .select(
-      'id, slug, title, description, url, logo_url, pricing, votes_count, comments_count',
-      { count: 'exact' }
-    )
+    .from(table)
+    .select('*', { count: 'exact' })
     .eq('category_id', cat.id)
     .eq('is_approved', true)
 
-  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+  // Search (websearch tsvector if available, else fallback)
+  if (q) query = query.textSearch ? query.textSearch('search_vec', q, { type: 'websearch' }) : query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
 
-  const { data: rows, count, error } = await query
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  // Sorting
+  query =
+    sort === 'trending'
+      ? query.order('trending_score', { ascending: false, nullsFirst: false })
+      : sort === 'top'
+      ? query.order('votes_count', { ascending: false, nullsFirst: true }).order('created_at', { ascending: false })
+      : query.order('created_at', { ascending: false })
 
+  const { data, count, error } = await query.range(from, to)
   if (error) return notFound()
 
+  const rows = (data ?? []) as Row[]
   const total = count ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -62,7 +84,7 @@ export default async function CategoryDetailPage(props: {
           <h1 className="text-2xl font-semibold">
             Category: <span className="text-gray-700">{cat.name}</span>
           </h1>
-          <p className="text-sm text-gray-600">Newest first</p>
+          <p className="text-sm text-gray-600">Total: {total}</p>
         </div>
         <form action={`/categories/${slug}`} className="flex gap-2">
           <input
@@ -71,11 +93,16 @@ export default async function CategoryDetailPage(props: {
             placeholder="Search in this category"
             className="border rounded-xl px-3 py-2 text-sm"
           />
-          <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Search</button>
+          <select name="sort" defaultValue={sort} className="border rounded-xl px-3 py-2 text-sm">
+            <option value="trending">Trending</option>
+            <option value="new">Newest</option>
+            <option value="top">Top (votes)</option>
+          </select>
+          <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Apply</button>
         </form>
       </header>
 
-      {(!rows || rows.length === 0) ? (
+      {rows.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
           No resources in this category yet.
         </div>
@@ -101,6 +128,9 @@ export default async function CategoryDetailPage(props: {
                 <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
                   <span>👍 {r.votes_count ?? 0}</span>
                   <span>💬 {r.comments_count ?? 0}</span>
+                  {sort === 'trending' && typeof r.trending_score === 'number' && (
+                    <span className="text-gray-400">score {(r.trending_score ?? 0).toFixed(3)}</span>
+                  )}
                 </div>
               </Link>
             </li>
@@ -108,7 +138,7 @@ export default async function CategoryDetailPage(props: {
         </ul>
       )}
 
-      <Pager base={`/categories/${slug}`} page={page} pageCount={pageCount} params={{ q }} />
+      <Pager base={`/categories/${slug}`} page={page} pageCount={pageCount} params={{ q, sort }} />
     </main>
   )
 }
@@ -122,11 +152,12 @@ function Pager({
   base: string
   page: number
   pageCount: number
-  params: { q: string }
+  params: { q: string; sort: 'trending'|'new'|'top' }
 }) {
   const mk = (p: number) => {
     const u = new URLSearchParams()
     if (params.q) u.set('q', params.q)
+    if (params.sort) u.set('sort', params.sort)
     u.set('page', String(p))
     return `${base}?${u.toString()}`
   }

@@ -39,6 +39,7 @@ export async function GET(req: Request, ctx: { params: Promise<Params> }) {
 
     if (!error && data?.target_url) {
       targetUrl = data.target_url;
+      // Note: go_links are not tied to resource_id, so we can't log resource clicks here
     }
   } catch {
     // ignore lookup errors; we'll try additional fallbacks
@@ -53,7 +54,8 @@ export async function GET(req: Request, ctx: { params: Promise<Params> }) {
         .or(`id.eq.${id},slug.eq.${id}`)
         .maybeSingle();
 
-      if (data?.url) {
+      // ✅ NEW: only redirect if the resource is approved
+      if (data?.url && data?.is_approved) {
         targetUrl = data.url;
         resourceIdForLog = data.id; // we can now log this click
       }
@@ -95,11 +97,19 @@ export async function GET(req: Request, ctx: { params: Promise<Params> }) {
         user_id: userId,
         ip_hash: sha256(ip),
         ua_hash: sha256(ua),
+        // If your table has these columns, you can also store them:
+        // referrer: req.headers.get('referer'),
+        // utm_source: new URL(req.url).searchParams.get('utm_source'),
+        // utm_medium: new URL(req.url).searchParams.get('utm_medium'),
+        // utm_campaign: new URL(req.url).searchParams.get('utm_campaign'),
       });
     } catch {
       // Swallow errors — redirect should still succeed
     }
   }
 
-  return NextResponse.redirect(targetUrl, 302);
+  const res = NextResponse.redirect(targetUrl, 302);
+  // Avoid caching the redirect
+  res.headers.set('Cache-Control', 'private, no-store, max-age=0');
+  return res;
 }
