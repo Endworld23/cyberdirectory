@@ -1,3 +1,4 @@
+// src/app/tags/[slug]/page.tsx
 import Link from 'next/link'
 import Image from 'next/image'
 import { notFound } from 'next/navigation'
@@ -6,22 +7,24 @@ import { createClientServer } from '@/lib/supabase-server'
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 24
+
+type Params = { slug: string }
 type SearchParams = { q?: string; page?: string }
 
-export default async function TagDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { slug: string }
-  searchParams: SearchParams
+export default async function TagDetailPage(props: {
+  params: Promise<Params>
+  searchParams: Promise<SearchParams>
 }) {
+  const { slug } = await props.params
+  const searchParams = (props.searchParams ? await props.searchParams : {}) as SearchParams
+
   const s = await createClientServer()
 
   // Find tag
   const { data: tag, error: eTag } = await s
     .from('tags')
     .select('id, name, slug')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .maybeSingle()
   if (eTag || !tag) return notFound()
 
@@ -53,14 +56,19 @@ export default async function TagDetailPage({
   // Query from stats view to get votes/comments counts
   let query = s
     .from('resource_public_stats')
-    .select('id, slug, title, description, url, logo_url, pricing, votes_count, comments_count', { count: 'exact' })
+    .select(
+      'id, slug, title, description, url, logo_url, pricing, votes_count, comments_count',
+      { count: 'exact' }
+    )
     .in('id', resourceIds)
     .eq('is_approved', true)
 
   // Full-text search on generated tsvector
   if (q) query = query.textSearch('search_vec', q, { type: 'websearch' })
 
-  const { data: rows, count, error } = await query.order('created_at', { ascending: false }).range(from, to)
+  const { data: rows, count, error } = await query
+    .order('created_at', { ascending: false })
+    .range(from, to)
   if (error) return notFound()
 
   const total = count ?? 0
@@ -75,8 +83,13 @@ export default async function TagDetailPage({
           </h1>
           <p className="text-sm text-gray-600">Newest first</p>
         </div>
-        <form action={`/tags/${params.slug}`} className="flex gap-2">
-          <input name="q" defaultValue={q} placeholder="Search in this tag" className="border rounded-xl px-3 py-2 text-sm" />
+        <form action={`/tags/${slug}`} className="flex gap-2">
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search in this tag"
+            className="border rounded-xl px-3 py-2 text-sm"
+          />
           <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Search</button>
         </form>
       </header>
@@ -86,10 +99,18 @@ export default async function TagDetailPage({
           <li key={r.id} className="rounded-xl border p-4 hover:shadow">
             <Link href={`/resources/${r.slug}`} className="block">
               {r.logo_url && (
-                <Image src={r.logo_url} alt={`${r.title} logo`} width={40} height={40} className="mb-2 h-10 w-10 object-contain" />
+                <Image
+                  src={r.logo_url}
+                  alt={`${r.title} logo`}
+                  width={40}
+                  height={40}
+                  className="mb-2 h-10 w-10 object-contain"
+                />
               )}
               <div className="font-medium">{r.title}</div>
-              {r.description && <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>}
+              {r.description && (
+                <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
+              )}
               <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
               <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
                 <span>👍 {r.votes_count ?? 0}</span>
@@ -100,7 +121,7 @@ export default async function TagDetailPage({
         ))}
       </ul>
 
-      <Pager base={`/tags/${params.slug}`} page={page} pageCount={pageCount} params={{ q }} />
+      <Pager base={`/tags/${slug}`} page={page} pageCount={pageCount} params={{ q }} />
     </main>
   )
 }
