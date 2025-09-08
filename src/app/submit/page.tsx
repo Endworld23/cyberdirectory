@@ -13,8 +13,7 @@ function norm(v: unknown) {
 function ensureProtocol(u: string) {
   if (!u) return u;
   try {
-    // Throws if invalid absolute URL
-    new URL(u);
+    new URL(u); // valid absolute URL
     return u;
   } catch {
     return `https://${u}`;
@@ -28,9 +27,13 @@ function slugifyOne(s: string): string {
 function parseTagSlugs(csv: string): string[] {
   return csv
     .split(',')
-    .map(t => slugifyOne(t))
+    .map((t) => slugifyOne(t))
     .filter(Boolean);
 }
+
+type Duplicate =
+  | { type: 'resource'; slug: string; title: string; url: string }
+  | { type: 'submission'; id: string; title: string; url: string };
 
 export default function SubmitPage() {
   const sb = createClientBrowser();
@@ -47,6 +50,11 @@ export default function SubmitPage() {
   const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
   const [sending, setSending] = useState(false);
 
+  // Duplicate precheck state
+  const [dup, setDup] = useState<Duplicate | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkErr, setCheckErr] = useState<string | null>(null);
+
   // Prefill email for signed-in users (non-blocking)
   useEffect(() => {
     let mounted = true;
@@ -55,11 +63,48 @@ export default function SubmitPage() {
       const e = data?.user?.email ?? '';
       if (e && !email) setEmail(e);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [sb, email]);
 
   const tagSlugs = useMemo(() => parseTagSlugs(tagsCsv), [tagsCsv]);
   const category_slug = useMemo(() => (categorySlug ? slugifyOne(categorySlug) : ''), [categorySlug]);
+
+  // Debounced duplicate check when URL changes
+  useEffect(() => {
+    setDup(null);
+    setCheckErr(null);
+
+    const val = url.trim();
+    // Skip clearly invalid/empty inputs to reduce noise
+    if (!val || val.length < 4 || !val.includes('.')) return;
+
+    const handle = setTimeout(async () => {
+      try {
+        setChecking(true);
+        const params = new URLSearchParams({ url: val });
+        const res = await fetch(`/api/submissions/check?${params.toString()}`);
+        const data: { ok: boolean; duplicate: Duplicate | null } = await res
+          .json()
+          .catch(() => ({ ok: false, duplicate: null }));
+        if (!data.ok) {
+          setCheckErr('Could not validate URL.');
+          setDup(null);
+        } else {
+          setDup(data.duplicate);
+          setCheckErr(null);
+        }
+      } catch {
+        setCheckErr('Could not validate URL.');
+        setDup(null);
+      } finally {
+        setChecking(false);
+      }
+    }, 500); // debounce 500ms
+
+    return () => clearTimeout(handle);
+  }, [url]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +115,10 @@ export default function SubmitPage() {
 
     if (!t || !u) {
       setMsg({ err: 'Title and URL are required.' });
+      return;
+    }
+    if (dup) {
+      setMsg({ err: 'This URL is already in the directory or pending review.' });
       return;
     }
 
@@ -93,6 +142,14 @@ export default function SubmitPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      // Handle duplicate conflict (409) gracefully
+      if (res.status === 409) {
+        const json = await res.json().catch(() => ({}));
+        setMsg({ err: json?.error || 'This URL appears to be a duplicate.' });
+        setSending(false);
+        return;
+      }
 
       const json: { ok?: boolean; error?: string } = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json.error || 'Submission failed');
@@ -145,7 +202,30 @@ export default function SubmitPage() {
             required
             placeholder="https://example.com"
           />
-          <p className="mt-1 text-xs text-gray-500">We’ll auto-add https:// if it’s missing.</p>
+          <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
+            <span>We’ll auto-add https:// if it’s missing.</span>
+            {checking && <span>Checking…</span>}
+          </div>
+
+          {/* Duplicate notice */}
+          {dup && (
+            <div className="mt-2 rounded-xl border bg-yellow-50 p-3 text-sm text-yellow-900">
+              {dup.type === 'resource' ? (
+                <div>
+                  This site is already listed:&nbsp;
+                  <a href={`/resources/${dup.slug}`} className="underline">
+                    {dup.title}
+                  </a>
+                </div>
+              ) : (
+                <div>
+                  There is already a pending submission for this site:{' '}
+                  <span className="font-medium">{dup.title}</span>.
+                </div>
+              )}
+            </div>
+          )}
+          {checkErr && <p className="mt-2 text-xs text-red-700">{checkErr}</p>}
         </div>
 
         <div>
@@ -226,10 +306,10 @@ export default function SubmitPage() {
 
         <button
           type="submit"
-          disabled={sending}
-          className="w-full rounded-xl bg-black px-4 py-2.5 text-white"
+          disabled={sending || !!dup}
+          className="w-full rounded-xl bg-black px-4 py-2.5 text-white disabled:opacity-50"
         >
-          {sending ? 'Submitting…' : 'Submit for review'}
+          {sending ? 'Submitting…' : dup ? 'Duplicate detected' : 'Submit for review'}
         </button>
 
         {msg?.ok && <p className="text-sm text-green-700">{msg.ok}</p>}
