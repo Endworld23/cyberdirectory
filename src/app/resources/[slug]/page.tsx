@@ -26,6 +26,9 @@ type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
 type Params = { slug: string }
 
+// Small helper
+const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+
 /* ------------------ Metadata ------------------ */
 export async function generateMetadata(
   { params }: { params: Promise<Params> }
@@ -40,7 +43,6 @@ export async function generateMetadata(
     .eq('is_approved', true)
     .single()
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
   const title = data?.title ? `${data.title} — Cyber Directory` : 'Resource — Cyber Directory'
   const description = data?.description ?? 'Explore cybersecurity resources curated by the community.'
   const ogImage = data?.logo_url || `${site}/og-default.png`
@@ -119,6 +121,43 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
     initialSaved = !!fav
   }
 
+  // Related resources (share at least one tag, exclude current)
+  let related: Array<{
+    id: string
+    slug: string
+    title: string
+    description: string | null
+    logo_url: string | null
+    pricing: ResourceRow['pricing'] | null
+  }> = []
+  if (tagIds.length) {
+    const { data: rows1 } = await s
+      .from('resource_tags')
+      .select('resource_id')
+      .in('tag_id', tagIds)
+      .neq('resource_id', r.id)
+
+    const relatedIds = Array.from(new Set((rows1 ?? []).map(x => x.resource_id as string)))
+    if (relatedIds.length) {
+      const { data: rows2 } = await s
+        .from('resources')
+        .select('id, slug, title, description, logo_url, pricing')
+        .in('id', relatedIds)
+        .eq('is_approved', true)
+        .order('created_at', { ascending: false })
+        .limit(6)
+      related = (rows2 ?? []) as typeof related
+    }
+  }
+
+  // Share links
+  const shareUrl = `${site}/resources/${r.slug}`
+  const share = {
+    twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(r.title)}&url=${encodeURIComponent(shareUrl)}`,
+    linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
+    email: `mailto:?subject=${encodeURIComponent(r.title)}&body=${encodeURIComponent(shareUrl)}`,
+  }
+
   // JSON-LD (CreativeWork baseline)
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -185,11 +224,52 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
         <VoteWidget resourceId={r.id} />
       </header>
 
+      {/* Share row */}
+      <section className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-gray-600">Share:</span>
+        <a href={share.twitter} target="_blank" rel="noreferrer" className="underline text-blue-600">Twitter</a>
+        <a href={share.linkedin} target="_blank" rel="noreferrer" className="underline text-blue-600">LinkedIn</a>
+        <a href={share.email} className="underline text-blue-600">Email</a>
+        <div className="ml-auto w-full sm:w-auto">
+          <input
+            readOnly
+            value={shareUrl}
+            className="w-full rounded border px-2 py-1 text-xs text-gray-700"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        </div>
+      </section>
+
       {/* Comments */}
       <section>
         <h2 className="text-lg font-medium mb-2">Comments</h2>
         <CommentsSection resourceId={r.id} />
       </section>
+
+      {/* Related */}
+      {related.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Related resources</h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {related.map(x => (
+              <li key={x.id} className="rounded-2xl border p-3">
+                <div className="flex items-center gap-3">
+                  {x.logo_url ? (
+                    <Image src={x.logo_url} alt={`${x.title} logo`} width={32} height={32} className="h-8 w-8 object-contain" />
+                  ) : (
+                    <div className="h-8 w-8 rounded bg-gray-100" />
+                  )}
+                  <Link href={`/resources/${x.slug}`} className="font-medium hover:underline truncate">
+                    {x.title}
+                  </Link>
+                </div>
+                {x.description && <p className="mt-2 text-xs text-gray-700 line-clamp-2">{x.description}</p>}
+                <div className="mt-2 text-[11px] text-gray-500">Pricing: {x.pricing ?? 'unknown'}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* JSON-LD */}
       <script
