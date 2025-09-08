@@ -6,15 +6,18 @@ import { createClientServer } from '@/lib/supabase-server'
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 24
-type SearchParams = { q?: string; page?: string }
 
-export default async function CategoryDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { slug: string }
-  searchParams: SearchParams
+type Params = { slug: string }
+type Search = { q?: string | string[]; page?: string | string[] }
+
+export default async function CategoryDetailPage(props: {
+  params: Params | Promise<Params>
+  searchParams?: Search | Promise<Search>
 }) {
+  // Normalize props (Next 15 may provide Promises; awaiting a non-promise is a no-op)
+  const params = await props.params
+  const searchParams = (props.searchParams ? await props.searchParams : {}) as Search
+
   const s = await createClientServer()
 
   // Find category
@@ -25,22 +28,29 @@ export default async function CategoryDetailPage({
     .maybeSingle()
   if (eCat || !cat) return notFound()
 
-  const q = (searchParams.q ?? '').trim()
-  const page = Math.max(1, Number(searchParams.page ?? '1') || 1)
+  const q = (Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q ?? '').trim()
+  const pageNum = Number(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page ?? '1') || 1
+  const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
   // Query resources by category from stats view
   let query = s
     .from('resource_public_stats')
-    .select('id, slug, title, description, url, logo_url, pricing, votes_count, comments_count', { count: 'exact' })
+    .select(
+      'id, slug, title, description, url, logo_url, pricing, votes_count, comments_count',
+      { count: 'exact' }
+    )
     .eq('category_id', cat.id)
     .eq('is_approved', true)
 
-  // Full-text search on generated tsvector
-  if (q) query = query.textSearch('search_vec', q, { type: 'websearch' })
+  // cspell:disable-next-line
+  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
 
-  const { data: rows, count, error } = await query.order('created_at', { ascending: false }).range(from, to)
+  const { data: rows, count, error } = await query
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
   if (error) return notFound()
 
   const total = count ?? 0
@@ -56,23 +66,38 @@ export default async function CategoryDetailPage({
           <p className="text-sm text-gray-600">Newest first</p>
         </div>
         <form action={`/categories/${params.slug}`} className="flex gap-2">
-          <input name="q" defaultValue={q} placeholder="Search in this category" className="border rounded-xl px-3 py-2 text-sm" />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Search in this category"
+            className="border rounded-xl px-3 py-2 text-sm"
+          />
           <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Search</button>
         </form>
       </header>
 
       {(!rows || rows.length === 0) ? (
-        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">No resources in this category yet.</div>
+        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
+          No resources in this category yet.
+        </div>
       ) : (
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {rows.map((r) => (
             <li key={r.id} className="rounded-xl border p-4 hover:shadow">
               <Link href={`/resources/${r.slug}`} className="block">
                 {r.logo_url && (
-                  <Image src={r.logo_url} alt={`${r.title} logo`} width={40} height={40} className="mb-2 h-10 w-10 object-contain" />
+                  <Image
+                    src={r.logo_url}
+                    alt={`${r.title} logo`}
+                    width={40}
+                    height={40}
+                    className="mb-2 h-10 w-10 object-contain"
+                  />
                 )}
                 <div className="font-medium">{r.title}</div>
-                {r.description && <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>}
+                {r.description && (
+                  <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
+                )}
                 <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
                 <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
                   <span>👍 {r.votes_count ?? 0}</span>
