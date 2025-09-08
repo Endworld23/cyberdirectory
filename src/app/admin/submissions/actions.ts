@@ -13,12 +13,31 @@ async function ensureClient() {
   return s
 }
 
+// 🔐 Centralized admin gate used by each action
+async function assertAdmin() {
+  const s = await ensureClient()
+  const { data: auth } = await s.auth.getUser()
+  const email = auth?.user?.email ?? null
+  if (!email) throw new Error('Not authorized')
+
+  const { data: admin, error: adminErr } = await s
+    .from('admin_emails')
+    .select('email')
+    .eq('email', email)
+    .maybeSingle()
+  if (adminErr || !admin) throw new Error('Not authorized')
+
+  return s
+}
+
 // Generate a slug that avoids collisions by appending -2, -3, ...
 async function uniqueSlug(base: string) {
   const s = await ensureClient()
-  let candidate = slugify(base || 'item')
+  const root = slugify(base || 'item')
+  let candidate = root
   let n = 1
-  while (true) {
+  // small safety to avoid infinite loops in pathological cases
+  for (let i = 0; i < 250; i++) {
     const { data, error } = await s
       .from('resources')
       .select('id')
@@ -28,12 +47,15 @@ async function uniqueSlug(base: string) {
     if (error) throw error
     if (!data) return candidate
     n += 1
-    candidate = `${slugify(base)}-${n}`
+    candidate = `${root}-${n}`
   }
+  throw new Error('Could not generate a unique slug')
 }
 
 export async function approveSubmission(formData: FormData) {
-  const s = await ensureClient()
+  // 🔐 require admin
+  const s = await assertAdmin()
+
   const id = String(formData.get('id') ?? '')
   if (!id) throw new Error('Missing submission id')
 
@@ -72,9 +94,7 @@ export async function approveSubmission(formData: FormData) {
       logo_url: sub.logo_url,
       pricing: sub.pricing ?? 'unknown',
       category_id,
-      is_approved: true,
-      // keep any tags array if you store tags directly on resources too
-      // tags: sub.tag_slugs ?? null
+      is_approved: true
     })
     .select('id')
     .single()
@@ -89,13 +109,13 @@ export async function approveSubmission(formData: FormData) {
     if (e3) throw e3
 
     if (tags?.length) {
-      const rows = tags.map(t => ({ resource_id: res!.id, tag_id: t.id }))
+      const rows = tags.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
       const { error: e4 } = await s.from('resource_tags').insert(rows)
       if (e4) throw e4
     }
   }
 
-  // mark approved
+  // mark approved on submission
   const { error: e5 } = await s.from('submissions').update({ status: 'approved' }).eq('id', id)
   if (e5) throw e5
 
@@ -105,9 +125,14 @@ export async function approveSubmission(formData: FormData) {
 }
 
 export async function rejectSubmission(formData: FormData) {
-  const s = await ensureClient()
+  // 🔐 require admin
+  const s = await assertAdmin()
+
   const id = String(formData.get('id') ?? '')
-  const notes = String(formData.get('notes') ?? '').trim() || null
+  const notesRaw = formData.get('notes')
+  const notes =
+    (typeof notesRaw === 'string' ? notesRaw : (notesRaw as string | null))?.trim() || null
+
   if (!id) throw new Error('Missing submission id')
 
   const { error } = await s.from('submissions').update({ status: 'rejected', notes }).eq('id', id)
