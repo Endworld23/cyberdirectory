@@ -8,12 +8,10 @@ function slugify(s: string) {
 }
 
 async function ensureClient() {
-  // IMPORTANT: await the server client
   const s = await createClientServer()
   return s
 }
 
-// 🔐 Centralized admin gate used by each action
 async function assertAdmin() {
   const s = await ensureClient()
   const { data: auth } = await s.auth.getUser()
@@ -35,9 +33,7 @@ async function uniqueSlug(base: string) {
   const s = await ensureClient()
   const root = slugify(base || 'item')
   let candidate = root
-  let n = 1
-  // small safety to avoid infinite loops in pathological cases
-  for (let i = 0; i < 250; i++) {
+  for (let n = 1; n <= 250; n++) {
     const { data, error } = await s
       .from('resources')
       .select('id')
@@ -46,20 +42,16 @@ async function uniqueSlug(base: string) {
       .maybeSingle()
     if (error) throw error
     if (!data) return candidate
-    n += 1
-    candidate = `${root}-${n}`
+    candidate = `${root}-${n + 1}`
   }
   throw new Error('Could not generate a unique slug')
 }
 
 export async function approveSubmission(formData: FormData) {
-  // 🔐 require admin
   const s = await assertAdmin()
-
   const id = String(formData.get('id') ?? '')
   if (!id) throw new Error('Missing submission id')
 
-  // load submission
   const { data: sub, error: e0 } = await s
     .from('submissions')
     .select('*')
@@ -68,7 +60,6 @@ export async function approveSubmission(formData: FormData) {
   if (e0) throw e0
   if (!sub) throw new Error('Submission not found')
 
-  // ensure category (optional)
   let category_id: string | null = null
   if (sub.category_slug) {
     const { data: cat, error: e1 } = await s
@@ -80,10 +71,8 @@ export async function approveSubmission(formData: FormData) {
     category_id = cat?.id ?? null
   }
 
-  // make a unique slug
   const safeSlug = await uniqueSlug(sub.title)
 
-  // insert resource
   const { data: res, error: e2 } = await s
     .from('resources')
     .insert({
@@ -94,13 +83,12 @@ export async function approveSubmission(formData: FormData) {
       logo_url: sub.logo_url,
       pricing: sub.pricing ?? 'unknown',
       category_id,
-      is_approved: true
+      is_approved: true,
     })
     .select('id')
     .single()
   if (e2) throw e2
 
-  // tags via join table (if provided)
   if (Array.isArray(sub.tag_slugs) && sub.tag_slugs.length) {
     const { data: tags, error: e3 } = await s
       .from('tags')
@@ -115,7 +103,6 @@ export async function approveSubmission(formData: FormData) {
     }
   }
 
-  // mark approved on submission
   const { error: e5 } = await s.from('submissions').update({ status: 'approved' }).eq('id', id)
   if (e5) throw e5
 
@@ -125,9 +112,7 @@ export async function approveSubmission(formData: FormData) {
 }
 
 export async function rejectSubmission(formData: FormData) {
-  // 🔐 require admin
   const s = await assertAdmin()
-
   const id = String(formData.get('id') ?? '')
   const notesRaw = formData.get('notes')
   const notes =
@@ -139,4 +124,93 @@ export async function rejectSubmission(formData: FormData) {
   if (error) throw error
 
   revalidatePath('/admin/submissions')
+}
+
+// NEW: approve with edits from inline form
+export async function approveWithEdits(formData: FormData) {
+  const s = await assertAdmin()
+
+  const id = String(formData.get('id') ?? '')
+  if (!id) throw new Error('Missing submission id')
+
+  // Pull edited values, falling back to submission defaults if missing
+  const title = (formData.get('title') as string | null)?.trim() || ''
+  const url = (formData.get('url') as string | null)?.trim() || ''
+  const description = (formData.get('description') as string | null)?.trim() || null
+  const category_slug = (formData.get('category_slug') as string | null)?.trim() || null
+  const pricing = (formData.get('pricing') as string | null)?.trim() || 'unknown'
+  const logo_url = (formData.get('logo_url') as string | null)?.trim() || null
+  const tagsRaw = (formData.get('tags') as string | null) || ''
+  const tag_slugs = tagsRaw
+    .split(',')
+    .map(s => s.trim().toLowerCase().replace(/\s+/g, '-'))
+    .filter(Boolean)
+
+  // If some required edited fields are blank, load original to fill
+  const { data: sub, error: e0 } = await s
+    .from('submissions')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (e0) throw e0
+  if (!sub) throw new Error('Submission not found')
+
+  const finalTitle = title || sub.title
+  const finalUrl = url || sub.url
+  const finalDesc = description ?? sub.description
+  const finalCategorySlug = category_slug || sub.category_slug || null
+  const finalPricing = (pricing as string) || sub.pricing || 'unknown'
+  const finalLogo = logo_url || sub.logo_url || null
+  const finalTags =
+    tag_slugs.length ? tag_slugs : Array.isArray(sub.tag_slugs) ? sub.tag_slugs : []
+
+  let category_id: string | null = null
+  if (finalCategorySlug) {
+    const { data: cat, error: e1 } = await s
+      .from('categories')
+      .upsert({ slug: finalCategorySlug, name: finalCategorySlug })
+      .select('id')
+      .single()
+    if (e1) throw e1
+    category_id = cat?.id ?? null
+  }
+
+  const safeSlug = await uniqueSlug(finalTitle)
+
+  const { data: res, error: e2 } = await s
+    .from('resources')
+    .insert({
+      slug: safeSlug,
+      title: finalTitle,
+      description: finalDesc,
+      url: finalUrl,
+      logo_url: finalLogo,
+      pricing: finalPricing,
+      category_id,
+      is_approved: true,
+    })
+    .select('id')
+    .single()
+  if (e2) throw e2
+
+  if (finalTags.length) {
+    const { data: tags, error: e3 } = await s
+      .from('tags')
+      .upsert(finalTags.map((sl: string) => ({ slug: sl, name: sl })))
+      .select('id,slug')
+    if (e3) throw e3
+
+    if (tags?.length) {
+      const rows = tags.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
+      const { error: e4 } = await s.from('resource_tags').insert(rows)
+      if (e4) throw e4
+    }
+  }
+
+  const { error: e5 } = await s.from('submissions').update({ status: 'approved' }).eq('id', id)
+  if (e5) throw e5
+
+  revalidatePath('/resources')
+  revalidatePath('/admin/submissions')
+  return res?.id
 }

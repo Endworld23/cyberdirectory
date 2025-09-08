@@ -2,7 +2,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClientServer } from '@/lib/supabase-server'
-import { approveSubmission, rejectSubmission } from './actions'
+import { approveSubmission, rejectSubmission, approveWithEdits } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,18 +23,16 @@ type Submission = {
 const PAGE_SIZE = 20
 type Status = 'pending' | 'approved' | 'rejected'
 
-function tabLink(toStatus: Status, current: Status, page: number) {
-  const isActive = current === toStatus
-  const href = `/admin/submissions?status=${toStatus}&page=${page}`
+function Tab({ to, active }: { to: string; active: boolean }) {
   return (
     <Link
-      href={href}
+      href={to}
       className={[
         'rounded-full px-3 py-1 text-sm border',
-        isActive ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300',
+        active ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300',
       ].join(' ')}
     >
-      {toStatus[0].toUpperCase() + toStatus.slice(1)}
+      {new URLSearchParams(to.split('?')[1]).get('status')!.replace(/^\w/, c => c.toUpperCase())}
     </Link>
   )
 }
@@ -42,7 +40,7 @@ function tabLink(toStatus: Status, current: Status, page: number) {
 export default async function AdminSubmissionsPage({
   searchParams,
 }: {
-  searchParams?: { status?: string; page?: string }
+  searchParams?: { status?: string; page?: string; q?: string }
 }) {
   const s = await createClientServer()
 
@@ -57,20 +55,33 @@ export default async function AdminSubmissionsPage({
     .maybeSingle()
   if (adminErr || !admin) return notFound()
 
-  // Query params
-  const status = (searchParams?.status?.toLowerCase() as Status) || 'pending'
+  // Params
+  const status: Status =
+    (['pending', 'approved', 'rejected'].includes((searchParams?.status || '').toLowerCase())
+      ? (searchParams!.status!.toLowerCase() as Status)
+      : 'pending')
   const page = Math.max(1, parseInt(searchParams?.page || '1', 10) || 1)
+  const q = (searchParams?.q || '').trim()
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  // Fetch rows + total count for pagination
-  const { data: subs, error, count } = await s
+  // Query w/ optional search (title/url/description)
+  let query = s
     .from('submissions')
     .select('*', { count: 'exact' })
     .eq('status', status)
     .order('created_at', { ascending: false })
     .range(from, to)
 
+  if (q) {
+    // Supabase 'or' filter with ilike across fields
+    const like = `%${q}%`
+    query = query.or(
+      `title.ilike.${like},url.ilike.${like},description.ilike.${like}`
+    )
+  }
+
+  const { data: subs, error, count } = await query
   if (error) {
     return <div className="p-6 text-red-600">Failed to load submissions: {error.message}</div>
   }
@@ -78,22 +89,46 @@ export default async function AdminSubmissionsPage({
   const total = count ?? 0
   const hasPrev = page > 1
   const hasNext = to + 1 < total
-  const prevHref = `/admin/submissions?status=${status}&page=${page - 1}`
-  const nextHref = `/admin/submissions?status=${status}&page=${page + 1}`
+
+  // Helpers to preserve q in nav
+  const baseQS = new URLSearchParams()
+  baseQS.set('status', status)
+  if (q) baseQS.set('q', q)
+
+  const prevQS = new URLSearchParams(baseQS)
+  prevQS.set('page', String(page - 1))
+  const nextQS = new URLSearchParams(baseQS)
+  nextQS.set('page', String(page + 1))
+
+  const pendingQS = new URLSearchParams({ status: 'pending', page: '1', ...(q ? { q } : {}) })
+  const approvedQS = new URLSearchParams({ status: 'approved', page: '1', ...(q ? { q } : {}) })
+  const rejectedQS = new URLSearchParams({ status: 'rejected', page: '1', ...(q ? { q } : {}) })
 
   return (
     <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold">Submissions</h1>
         <nav className="flex gap-2">
-          {tabLink('pending', status, 1)}
-          {tabLink('approved', status, 1)}
-          {tabLink('rejected', status, 1)}
+          <Tab to={`/admin/submissions?${pendingQS.toString()}`} active={status === 'pending'} />
+          <Tab to={`/admin/submissions?${approvedQS.toString()}`} active={status === 'approved'} />
+          <Tab to={`/admin/submissions?${rejectedQS.toString()}`} active={status === 'rejected'} />
         </nav>
       </header>
 
+      <form className="flex gap-2" method="GET" action="/admin/submissions">
+        <input type="hidden" name="status" value={status} />
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search title, URL, or description…"
+          className="flex-1 rounded-xl border px-3 py-2 text-sm"
+        />
+        <input type="hidden" name="page" value="1" />
+        <button className="rounded-xl border px-4 py-2 text-sm">Search</button>
+      </form>
+
       <p className="text-sm text-gray-600">
-        Showing {subs?.length ?? 0} of {total} {status} submissions
+        Showing {subs?.length ?? 0} of {total} {status} submissions{q ? ` for “${q}”` : ''}
       </p>
 
       {(!subs || subs.length === 0) && (
@@ -134,6 +169,7 @@ export default async function AdminSubmissionsPage({
                 <div className="mt-2 text-xs text-gray-500">
                   {r.category_slug && <span className="mr-3">category: {r.category_slug}</span>}
                   {r.tag_slugs?.length ? <span>tags: {r.tag_slugs.join(', ')}</span> : null}
+                  {r.pricing && <span className="ml-3">pricing: {r.pricing}</span>}
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
                   Submitted: {new Date(r.created_at).toLocaleString()}
@@ -165,6 +201,62 @@ export default async function AdminSubmissionsPage({
                 </div>
               ) : null}
             </div>
+
+            {status === 'pending' ? (
+              <details className="mt-3 rounded-xl border bg-gray-50 p-3">
+                <summary className="cursor-pointer text-sm font-medium">Edit & Approve</summary>
+                <form action={approveWithEdits} className="mt-3 grid grid-cols-1 gap-3">
+                  <input type="hidden" name="id" value={r.id} />
+                  <label className="text-xs text-gray-600">Title</label>
+                  <input name="title" defaultValue={r.title || ''} className="rounded border px-2 py-1 text-sm" />
+                  <label className="text-xs text-gray-600">URL</label>
+                  <input name="url" defaultValue={r.url || ''} className="rounded border px-2 py-1 text-sm" />
+                  <label className="text-xs text-gray-600">Description</label>
+                  <textarea
+                    name="description"
+                    defaultValue={r.description || ''}
+                    rows={3}
+                    className="rounded border px-2 py-1 text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600">Category slug</label>
+                      <input
+                        name="category_slug"
+                        defaultValue={r.category_slug || ''}
+                        className="w-full rounded border px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600">Pricing</label>
+                      <select
+                        name="pricing"
+                        defaultValue={r.pricing || 'unknown'}
+                        className="w-full rounded border px-2 py-1 text-sm"
+                      >
+                        <option value="unknown">unknown</option>
+                        <option value="free">free</option>
+                        <option value="freemium">freemium</option>
+                        <option value="trial">trial</option>
+                        <option value="paid">paid</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label className="text-xs text-gray-600">Logo URL</label>
+                  <input name="logo_url" defaultValue={r.logo_url || ''} className="rounded border px-2 py-1 text-sm" />
+                  <label className="text-xs text-gray-600">Tags (comma-separated)</label>
+                  <input
+                    name="tags"
+                    defaultValue={Array.isArray(r.tag_slugs) ? r.tag_slugs.join(', ') : ''}
+                    className="rounded border px-2 py-1 text-sm"
+                  />
+
+                  <div className="flex justify-end gap-2">
+                    <button className="rounded bg-black px-3 py-1.5 text-white text-sm">Approve with edits</button>
+                  </div>
+                </form>
+              </details>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -175,7 +267,7 @@ export default async function AdminSubmissionsPage({
         </span>
         <div className="flex gap-2">
           <Link
-            href={hasPrev ? prevHref : '#'}
+            href={hasPrev ? `/admin/submissions?${prevQS.toString()}` : '#'}
             aria-disabled={!hasPrev}
             className={[
               'rounded border px-3 py-1 text-sm',
@@ -185,7 +277,7 @@ export default async function AdminSubmissionsPage({
             Previous
           </Link>
           <Link
-            href={hasNext ? nextHref : '#'}
+            href={hasNext ? `/admin/submissions?${nextQS.toString()}` : '#'}
             aria-disabled={!hasNext}
             className={[
               'rounded border px-3 py-1 text-sm',
