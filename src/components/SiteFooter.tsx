@@ -7,6 +7,7 @@ export function SiteFooter() {
         <p>© {new Date().getFullYear()} Cyber Directory</p>
 
         <nav className="flex flex-wrap items-center justify-center gap-4">
+          <Link href="/resources/trending" className="hover:text-black">Trending</Link>
           <Link href="/resources" className="hover:text-black">Resources</Link>
           <Link href="/tags" className="hover:text-black">Tags</Link>
           <Link href="/categories" className="hover:text-black">Categories</Link>

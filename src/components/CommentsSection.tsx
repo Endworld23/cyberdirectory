@@ -1,3 +1,4 @@
+/* cspell:ignore supabase */
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -12,6 +13,8 @@ type CommentRow = {
   is_deleted?: boolean | null;
 };
 
+type FlagRow = { comment_id: string };
+
 const PAGE_SIZE = 10;
 
 export default function CommentsSection({ resourceId }: { resourceId: string }) {
@@ -23,6 +26,7 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
   const [userId, setUserId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [cursor, setCursor] = useState<string | null>(null); // oldest loaded created_at
+  const [flagged, setFlagged] = useState<Set<string>>(new Set()); // comments I've reported
 
   async function load(initial = false) {
     const q = sb
@@ -34,7 +38,6 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
       .limit(PAGE_SIZE);
 
     if (!initial && cursor) {
-      // get older than the last item we have
       q.lt('created_at', cursor);
     }
 
@@ -44,7 +47,6 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     if (initial) {
       setRows(data || []);
     } else {
-      // append without dupes
       const existing = new Set(rows.map((r) => r.id));
       const fresh = (data || []).filter((r) => !existing.has(r.id));
       setRows((r) => [...r, ...fresh]);
@@ -63,7 +65,7 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     })();
     void load(true);
 
-    // realtime
+    // Realtime on this resource's comments
     const channel = sb
       .channel(`comments:${resourceId}`)
       .on(
@@ -97,6 +99,22 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourceId]);
 
+  // Fetch which visible comments I've already flagged (to disable the button)
+  useEffect(() => {
+    (async () => {
+      if (!userId || rows.length === 0) return;
+      const ids = rows.map((r) => r.id);
+      const { data, error } = await sb
+        .from('comment_flags')
+        .select('comment_id')
+        .eq('user_id', userId)
+        .in('comment_id', ids);
+      if (!error && data) {
+        setFlagged(new Set((data as FlagRow[]).map((x) => x.comment_id)));
+      }
+    })();
+  }, [userId, rows, sb]);
+
   async function post(e: React.FormEvent) {
     e.preventDefault();
     const text = body.trim();
@@ -125,9 +143,10 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
       if (!json.ok) throw new Error(json.error || 'Unable to post comment.');
       // realtime INSERT will replace optimistic
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to post comment.';
       setRows((r) => r.filter((x) => !x.id.startsWith('tmp_')));
       setBody(text);
-      alert((err as Error).message);
+      alert(msg);
     } finally {
       setBusy(false);
     }
@@ -142,6 +161,30 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     const json: { ok?: boolean; error?: string } = await res.json();
     if (!json?.ok) return alert(json?.error || 'Unable to delete comment.');
     // realtime UPDATE removes it
+  }
+
+  async function report(id: string) {
+    if (!userId) return alert('Please sign in to report.');
+    if (flagged.has(id)) return;
+
+    const reason = (prompt('Why are you reporting this comment? (optional)') || '').trim();
+    const res = await fetch('/api/comments/flag', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commentId: id, reason: reason || undefined }),
+    });
+
+    if (res.status === 401) return alert('Please sign in to report.');
+    if (res.status === 403) return alert('Please verify your email to report.');
+    if (res.status === 429) return alert('Too many reports, please wait a moment.');
+
+    const json: { ok?: boolean; error?: string } = await res.json();
+    if (!json?.ok) return alert(json?.error || 'Unable to report this comment.');
+    setFlagged((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   }
 
   async function loadMore() {
@@ -177,10 +220,21 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
             <p className="text-sm">{r.body}</p>
             <div className="mt-1 text-xs text-gray-500 flex items-center gap-3">
               <span>{new Date(r.created_at).toLocaleString()}</span>
-              {userId && userId === r.user_id && (
+
+              {userId && userId === r.user_id ? (
                 <button className="underline text-xs" onClick={() => softDelete(r.id)}>
                   Delete
                 </button>
+              ) : (
+                userId && (
+                  <button
+                    className="underline text-xs"
+                    onClick={() => report(r.id)}
+                    disabled={flagged.has(r.id)}
+                  >
+                    {flagged.has(r.id) ? 'Reported' : 'Report'}
+                  </button>
+                )
               )}
             </div>
           </li>
