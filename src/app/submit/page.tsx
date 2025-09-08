@@ -1,54 +1,77 @@
-'use client'
+/* cspell:ignore supabase */
+'use client';
 
-import { useState } from 'react'
-import { createClientBrowser } from '@/lib/supabase-browser'
+import { useState } from 'react';
+import { createClientBrowser } from '@/lib/supabase-browser';
+
+type Pricing = 'unknown' | 'free' | 'freemium' | 'trial' | 'paid';
 
 export default function SubmitPage() {
-  const supabase = createClientBrowser()
-  const [title, setTitle] = useState('')
-  const [url, setUrl] = useState('')
-  const [description, setDescription] = useState('')
-  const [tags, setTags] = useState('')
-  const [category, setCategory] = useState('')
-  const [pricing, setPricing] = useState<'unknown' | 'free' | 'freemium' | 'trial' | 'paid'>('unknown')
-  const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null)
-  const [sending, setSending] = useState(false)
+  const sb = createClientBrowser();
+
+  const [title, setTitle] = useState('');
+  const [url, setUrl] = useState('');
+  const [description, setDescription] = useState('');
+  const [categorySlug, setCategorySlug] = useState('');
+  const [email, setEmail] = useState(''); // optional for guests
+  const [pricing, setPricing] = useState<Pricing>('unknown');
+
+  const [msg, setMsg] = useState<{ ok?: string; err?: string } | null>(null);
+  const [sending, setSending] = useState(false);
+
+  async function resolveCategoryId(slug: string): Promise<string | null> {
+    if (!slug.trim()) return null;
+    const { data } = await sb
+      .from('categories')
+      .select('id')
+      .eq('slug', slug.trim().toLowerCase())
+      .maybeSingle<{ id: string }>();
+    return data?.id ?? null;
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setMsg(null)
+    e.preventDefault();
+    setMsg(null);
 
     if (!title.trim() || !url.trim()) {
-      setMsg({ err: 'Title and URL are required.' })
-      return
+      setMsg({ err: 'Title and URL are required.' });
+      return;
     }
 
-    setSending(true)
+    setSending(true);
+    try {
+      const category_id = await resolveCategoryId(categorySlug);
 
-    const tag_slugs = tags
-      .split(',')
-      .map(t => t.trim().toLowerCase())
-      .filter(Boolean)
+      const res = await fetch('/api/submissions/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          url: url.trim(),
+          description: description.trim() || undefined,
+          pricing,
+          category_id: category_id ?? undefined,
+          email: email.trim() || undefined,
+          hp: '' // honeypot
+        }),
+      });
 
-    const { error } = await supabase.from('submissions').insert({
-      title,
-      url,
-      description: description || null,
-      category_slug: category || null,
-      tag_slugs,
-      pricing, // enum_pricing in DB
-    })
+      const json: { ok?: boolean; error?: string } = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Submission failed');
 
-    setSending(false)
-
-    if (error) {
-      setMsg({ err: error.message })
-      return
+      setMsg({ ok: 'Thanks! Your submission is pending review.' });
+      setTitle('');
+      setUrl('');
+      setDescription('');
+      setCategorySlug('');
+      setEmail('');
+      setPricing('unknown');
+    } catch (err) {
+      setMsg({ err: err instanceof Error ? err.message : 'Submission failed' });
+    } finally {
+      setSending(false);
     }
-
-    setMsg({ ok: 'Thanks! Your submission is pending review.' })
-    setTitle(''); setUrl(''); setDescription(''); setTags(''); setCategory(''); setPricing('unknown')
-  }
+  };
 
   return (
     <section className="mx-auto max-w-2xl space-y-6">
@@ -65,6 +88,7 @@ export default function SubmitPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
+            minLength={3}
           />
         </div>
 
@@ -80,7 +104,7 @@ export default function SubmitPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium">Description</label>
+          <label className="block text-sm font-medium">Short description</label>
           <textarea
             className="mt-1 w-full rounded-xl border px-3 py-2"
             rows={4}
@@ -90,22 +114,12 @@ export default function SubmitPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium">Category (slug)</label>
+          <label className="block text-sm font-medium">Category (slug, optional)</label>
           <input
             className="mt-1 w-full rounded-xl border px-3 py-2"
             placeholder="e.g., network-tools"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Tags (comma-separated)</label>
-          <input
-            className="mt-1 w-full rounded-xl border px-3 py-2"
-            placeholder="nmap, scanner, tcp"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
+            value={categorySlug}
+            onChange={(e) => setCategorySlug(e.target.value)}
           />
         </div>
 
@@ -114,7 +128,7 @@ export default function SubmitPage() {
           <select
             className="mt-1 w-full rounded-xl border px-3 py-2"
             value={pricing}
-            onChange={(e) => setPricing(e.target.value as typeof pricing)}
+            onChange={(e) => setPricing(e.target.value as Pricing)}
           >
             <option value="unknown">Unknown</option>
             <option value="free">Free</option>
@@ -122,6 +136,17 @@ export default function SubmitPage() {
             <option value="trial">Trial</option>
             <option value="paid">Paid</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium">Your email (optional if not signed in)</label>
+          <input
+            type="email"
+            className="mt-1 w-full rounded-xl border px-3 py-2"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
         </div>
 
         <button
@@ -136,5 +161,5 @@ export default function SubmitPage() {
         {msg?.err && <p className="text-sm text-red-700">{msg.err}</p>}
       </form>
     </section>
-  )
+  );
 }
