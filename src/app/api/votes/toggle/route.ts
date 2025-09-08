@@ -1,85 +1,100 @@
-// src/app/api/votes/toggle/route.ts
-import { NextResponse } from 'next/server'
-import { createClientServer } from '@/lib/supabase-server'
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createClientServer } from '@/lib/supabase-server';
 
-export const runtime = 'nodejs'
+const bodySchema = z.object({ resourceId: z.string().uuid() });
 
-type ToggleReq = { resourceId?: string }
-type VoteRow = { value: number }
+// Ensure Node runtime (not edge)
+export const runtime = 'nodejs';
 
-// Helper: sum vote values safely (no implicit any)
-function sumValues(rows: VoteRow[] | null | undefined): number {
-  if (!rows?.length) return 0
-  return rows.reduce<number>((acc, r) => acc + (typeof r.value === 'number' ? r.value : 0), 0)
-}
+export async function POST(req: NextRequest) {
+  const s = await createClientServer();
 
-export async function POST(req: Request) {
+  // Parse body
+  let raw: unknown;
   try {
-    const body = (await req.json()) as ToggleReq
-    const resourceId = body?.resourceId
-    if (!resourceId) {
-      return NextResponse.json({ error: 'Missing resourceId' }, { status: 400 })
-    }
-
-    const s = await createClientServer()
-
-    // Auth
-    const { data: auth } = await s.auth.getUser()
-    const user = auth?.user
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    // Optional: email verification gate (disable if not needed)
-    const emailVerified = Boolean(user.email_confirmed_at) || Boolean(user.user_metadata?.email_verified)
-    if (!emailVerified) {
-      return NextResponse.json({ error: 'Email not verified' }, { status: 403 })
-    }
-
-    // Do I already have a vote row for this resource?
-    const { data: mine, error: findErr } = await s
-      .from('votes')
-      .select('id')
-      .eq('resource_id', resourceId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (findErr) {
-      return NextResponse.json({ error: findErr.message }, { status: 500 })
-    }
-
-    let voted: boolean
-
-    if (mine) {
-      // remove my vote row (requires "votes_delete_own" RLS policy)
-      const { error: delErr } = await s.from('votes').delete().match({ id: mine.id })
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 500 })
-      }
-      voted = false
-    } else {
-      // insert upvote
-      const { error: insErr } = await s
-        .from('votes')
-        .insert({ resource_id: resourceId, user_id: user.id, value: 1 })
-      if (insErr) {
-        return NextResponse.json({ error: insErr.message }, { status: 500 })
-      }
-      voted = true
-    }
-
-    // Recompute total score
-    const { data: allVotes, error: sumErr } = await s
-      .from('votes')
-      .select('value')
-      .eq('resource_id', resourceId)
-    if (sumErr) {
-      return NextResponse.json({ error: sumErr.message }, { status: 500 })
-    }
-
-    const count = sumValues(allVotes as VoteRow[])
-
-    return NextResponse.json({ voted, count })
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : 'Unexpected error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: 'Invalid payload' }, { status: 400 });
+  }
+  const { resourceId } = parsed.data;
+
+  // Auth
+  const { data: auth } = await s.auth.getUser();
+  const user = auth?.user ?? null;
+  if (!user) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Email verified?
+  const emailVerified = Boolean(user.email_confirmed_at);
+  if (!emailVerified) {
+    return NextResponse.json({ ok: false, error: 'Email not verified' }, { status: 403 });
+  }
+
+  // Resource exists & approved
+  const { data: resource } = await s
+    .from('resources')
+    .select('id, is_approved')
+    .eq('id', resourceId)
+    .maybeSingle();
+  if (!resource || !resource.is_approved) {
+    return NextResponse.json({ ok: false, error: 'Resource not found' }, { status: 404 });
+  }
+
+  // Basic rate limit: max 5 toggles in 10s per user
+  const sinceIso = new Date(Date.now() - 10_000).toISOString();
+  const { data: recent, error: rlErr } = await s
+    .from('vote_events')
+    .select('id')
+    .eq('user_id', user.id)
+    .gt('created_at', sinceIso);
+
+  if (!rlErr && (recent?.length ?? 0) >= 5) {
+    return NextResponse.json({ ok: false, error: 'Too many requests' }, { status: 429 });
+  }
+
+  // Record attempt (best-effort, ignore result)
+  await s.from('vote_events').insert({
+    user_id: user.id,
+    resource_id: resourceId,
+    action: 'toggle',
+  });
+
+  // Toggle vote
+  const { data: existing } = await s
+    .from('votes')
+    .select('id')
+    .eq('resource_id', resourceId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  let voted: boolean;
+  if (existing) {
+    await s.from('votes').delete().eq('id', existing.id);
+    voted = false;
+  } else {
+    const { error: insErr } = await s.from('votes').insert({
+      resource_id: resourceId,
+      user_id: user.id,
+    });
+
+    // If a unique constraint trips, treat as already-voted (no crash)
+    if (insErr && insErr.code !== '23505') {
+      return NextResponse.json({ ok: false, error: 'DB error inserting vote' }, { status: 500 });
+    }
+    voted = true;
+  }
+
+  // Fresh count
+  const { count } = await s
+    .from('votes')
+    .select('*', { count: 'exact', head: true })
+    .eq('resource_id', resourceId);
+
+  return NextResponse.json({ ok: true, voted, count: count ?? 0 });
 }

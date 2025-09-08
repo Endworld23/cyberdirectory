@@ -1,87 +1,83 @@
+/* cspell:ignore supabase */
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState } from 'react';
+import { createClientBrowser } from '@/lib/supabase-browser';
 
-type Props = {
-  resourceId: string;
-  initialCount?: number;
-  initialVoted?: boolean;
-};
+type VoteRow = { id: string };
 
-export default function VoteButtons({
-  resourceId,
-  initialCount = 0,
-  initialVoted = false,
-}: Props) {
-  const [count, setCount] = useState<number>(initialCount);
-  const [voted, setVoted] = useState<boolean>(initialVoted);
-  const [pending, start] = useTransition();
+export default function VoteWidget({ resourceId }: { resourceId: string }) {
+  const sb = createClientBrowser();
+  const [count, setCount] = useState<number>(0);
+  const [hasVoted, setHasVoted] = useState<boolean>(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const toggle = () => {
-    if (pending) return;
+  useEffect(() => {
+    (async () => {
+      // who am I?
+      const { data: userData } = await sb.auth.getUser();
+      const uid = userData.user?.id ?? null;
+      setUserId(uid);
 
-    // optimistic update
-    const prev = { voted, count };
-    const nextVoted = !voted;
-    const nextCount = count + (nextVoted ? 1 : -1);
-    setVoted(nextVoted);
-    setCount(nextCount);
+      // total count
+      const { count: c } = await sb
+        .from('votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('resource_id', resourceId);
+      setCount(c ?? 0);
 
-    start(async () => {
-      try {
-        const res = await fetch('/api/votes/toggle', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resourceId }),
-        });
-
-        if (res.status === 401) {
-          setVoted(prev.voted);
-          setCount(prev.count);
-          alert('Please sign in to vote.');
-          return;
-        }
-        if (res.status === 403) {
-          setVoted(prev.voted);
-          setCount(prev.count);
-          alert('Please verify your email to vote.');
-          return;
-        }
-
-        const json: { voted?: boolean; count?: number; error?: string } = await res.json();
-        if (json.error) {
-          setVoted(prev.voted);
-          setCount(prev.count);
-          alert(json.error);
-          return;
-        }
-        if (typeof json.voted === 'boolean') setVoted(json.voted);
-        if (typeof json.count === 'number') setCount(json.count);
-      } catch (err) {
-        setVoted(prev.voted);
-        setCount(prev.count);
-        console.error(err);
-        alert('Vote failed. Please try again.');
+      // did I vote?
+      if (uid) {
+        const { data: mine } = await sb
+          .from('votes')
+          .select('id')
+          .eq('resource_id', resourceId)
+          .eq('user_id', uid)
+          .maybeSingle<VoteRow>();
+        setHasVoted(Boolean(mine));
+      } else {
+        setHasVoted(false);
       }
-    });
-  };
+    })();
+  }, [sb, resourceId]);
+
+  async function toggle() {
+    if (!userId) return alert('Please sign in to vote.');
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/votes/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resourceId }),
+      });
+      if (res.status === 401) return alert('Please sign in to vote.');
+      if (res.status === 403) return alert('Please verify your email to vote.');
+      if (res.status === 429) return alert('Too many requests. Please wait a moment.');
+      const json: { ok?: boolean; voted?: boolean; count?: number; error?: string } = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Unable to toggle vote.');
+
+      setHasVoted(Boolean(json.voted));
+      if (typeof json.count === 'number') setCount(json.count);
+      else setCount((c) => c + (json.voted ? 1 : -1));
+    } catch (err) {
+      console.error(err);
+      alert('Something went wrong toggling your vote.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={toggle}
-        disabled={pending}
-        className={`rounded-xl border px-3 py-1.5 text-sm ${
-          voted ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-50'
-        }`}
-        aria-pressed={voted}
-        title={voted ? 'Remove your vote' : 'Upvote'}
-      >
-        {voted ? 'Upvoted' : 'Upvote'}
-      </button>
-      <span className="text-sm text-gray-600" aria-live="polite">
-        {count}
-      </span>
-    </div>
+    <button
+      onClick={toggle}
+      disabled={!userId || busy}
+      aria-pressed={hasVoted}
+      className={`rounded px-3 py-1 border ${hasVoted ? 'bg-black text-white' : ''}`}
+      title={userId ? '' : 'Sign in to vote'}
+    >
+      ▲ {count}
+    </button>
   );
 }

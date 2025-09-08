@@ -12,30 +12,58 @@ type CommentRow = {
   is_deleted?: boolean | null;
 };
 
+const PAGE_SIZE = 10;
+
 export default function CommentsSection({ resourceId }: { resourceId: string }) {
   const sb = createClientBrowser();
   const [rows, setRows] = useState<CommentRow[]>([]);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  const [moreBusy, setMoreBusy] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [cursor, setCursor] = useState<string | null>(null); // oldest loaded created_at
 
-  async function load() {
-    const { data, error } = await sb
+  async function load(initial = false) {
+    const q = sb
       .from('comments')
       .select('id, body, created_at, user_id, resource_id, is_deleted')
       .eq('resource_id', resourceId)
-      .eq('is_deleted', false) // hide soft-deleted
-      .order('created_at', { ascending: false });
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+      .limit(PAGE_SIZE);
 
-    if (!error) setRows(data || []);
+    if (!initial && cursor) {
+      // get older than the last item we have
+      q.lt('created_at', cursor);
+    }
+
+    const { data, error } = await q;
+    if (error) return;
+
+    if (initial) {
+      setRows(data || []);
+    } else {
+      // append without dupes
+      const existing = new Set(rows.map((r) => r.id));
+      const fresh = (data || []).filter((r) => !existing.has(r.id));
+      setRows((r) => [...r, ...fresh]);
+    }
+
+    const list = initial ? (data || []) : [...rows, ...(data || [])];
+    const last = (initial ? data : (data || [])).at(-1);
+    setCursor(last ? last.created_at : list.at(-1)?.created_at ?? null);
+    setHasMore((data || []).length === PAGE_SIZE);
   }
 
   useEffect(() => {
-    // current user (to show Delete on own comments)
-    sb.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
-    void load();
+    (async () => {
+      const { data } = await sb.auth.getUser();
+      setUserId(data.user?.id ?? null);
+    })();
+    void load(true);
 
-    // Realtime subscription (INSERT/UPDATE/DELETE scoped to this resource)
+    // realtime
     const channel = sb
       .channel(`comments:${resourceId}`)
       .on(
@@ -44,14 +72,15 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const row = payload.new as CommentRow;
-            if (!row.is_deleted) setRows((r) => [row, ...r]);
+            if (!row.is_deleted) {
+              setRows((r) => (r.some((x) => x.id === row.id) ? r : [row, ...r]));
+            }
           }
           if (payload.eventType === 'UPDATE') {
             const row = payload.new as CommentRow;
             setRows((r) => {
-              // remove if now deleted; otherwise replace
-              const next = r.map((x) => (x.id === row.id ? row : x)).filter((x) => !x.is_deleted);
-              return next;
+              const next = r.map((x) => (x.id === row.id ? row : x));
+              return next.filter((x) => !x.is_deleted);
             });
           }
           if (payload.eventType === 'DELETE') {
@@ -73,9 +102,7 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     const text = body.trim();
     if (!text || busy) return;
     setBusy(true);
-
     try {
-      // optimistic UI
       const optimistic: CommentRow = {
         id: `tmp_${Date.now()}`,
         body: text,
@@ -87,7 +114,6 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
       setRows((r) => [optimistic, ...r]);
       setBody('');
 
-      // your API will set the real row and trigger realtime INSERT
       const res = await fetch('/api/comments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,9 +123,8 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
       if (res.status === 403) return alert('Please verify your email to comment.');
       const json: { ok?: boolean; error?: string } = await res.json();
       if (!json.ok) throw new Error(json.error || 'Unable to post comment.');
-      // No manual reload needed; realtime INSERT will replace optimistic
+      // realtime INSERT will replace optimistic
     } catch (err) {
-      // rollback optimistic on failure
       setRows((r) => r.filter((x) => !x.id.startsWith('tmp_')));
       setBody(text);
       alert((err as Error).message);
@@ -109,7 +134,6 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
   }
 
   async function softDelete(id: string) {
-    // Soft-delete via your API (sets is_deleted=true, optionally body='[deleted]')
     const res = await fetch('/api/comments/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,7 +141,17 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
     });
     const json: { ok?: boolean; error?: string } = await res.json();
     if (!json?.ok) return alert(json?.error || 'Unable to delete comment.');
-    // No manual reload; realtime UPDATE will prune the item
+    // realtime UPDATE removes it
+  }
+
+  async function loadMore() {
+    if (!hasMore || moreBusy) return;
+    setMoreBusy(true);
+    try {
+      await load(false);
+    } finally {
+      setMoreBusy(false);
+    }
   }
 
   return (
@@ -144,10 +178,7 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
             <div className="mt-1 text-xs text-gray-500 flex items-center gap-3">
               <span>{new Date(r.created_at).toLocaleString()}</span>
               {userId && userId === r.user_id && (
-                <button
-                  className="underline text-xs"
-                  onClick={() => softDelete(r.id)}
-                >
+                <button className="underline text-xs" onClick={() => softDelete(r.id)}>
                   Delete
                 </button>
               )}
@@ -156,6 +187,18 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
         ))}
         {rows.length === 0 && <li className="text-sm text-gray-600">No comments yet.</li>}
       </ul>
+
+      {hasMore && (
+        <div className="pt-2">
+          <button
+            onClick={loadMore}
+            disabled={moreBusy}
+            className="rounded border px-3 py-1 text-sm"
+          >
+            {moreBusy ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
