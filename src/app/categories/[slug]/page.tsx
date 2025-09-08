@@ -10,14 +10,13 @@ const PAGE_SIZE = 24
 type Params = { slug: string }
 type Search = { q?: string | string[]; page?: string | string[] }
 
-export default async function CategoryDetailPage(props: {
-  params: Params | Promise<Params>
-  searchParams?: Search | Promise<Search>
+export default async function CategoryDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Params
+  searchParams?: Search
 }) {
-  // Normalize props (Next 15 may provide Promises; awaiting a non-promise is a no-op)
-  const params = await props.params
-  const searchParams = (props.searchParams ? await props.searchParams : {}) as Search
-
   const s = await createClientServer()
 
   // Find category
@@ -28,8 +27,10 @@ export default async function CategoryDetailPage(props: {
     .maybeSingle()
   if (eCat || !cat) return notFound()
 
-  const q = (Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q ?? '').trim()
-  const pageNum = Number(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page ?? '1') || 1
+  const q = (Array.isArray(searchParams?.q) ? searchParams?.q[0] : searchParams?.q ?? '').trim()
+  const pageNum =
+    Number(Array.isArray(searchParams?.page) ? searchParams?.page[0] : searchParams?.page ?? '1') ||
+    1
   const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -44,7 +45,6 @@ export default async function CategoryDetailPage(props: {
     .eq('category_id', cat.id)
     .eq('is_approved', true)
 
-  // cspell:disable-next-line
   if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
 
   const { data: rows, count, error } = await query
@@ -76,7 +76,7 @@ export default async function CategoryDetailPage(props: {
         </form>
       </header>
 
-      {(!rows || rows.length === 0) ? (
+      {!rows || rows.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
           No resources in this category yet.
         </div>
