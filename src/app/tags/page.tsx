@@ -7,11 +7,10 @@ export const dynamic = 'force-dynamic'
 const PAGE_SIZE = 48
 
 type SearchParams = { q?: string; page?: string; sort?: 'popular' | 'name' }
-type Row = { slug: string; name: string; resource_count: number }
+type Row = { slug: string; name: string; resource_count: number | null }
 
 export default async function TagsIndex(props: { searchParams: Promise<SearchParams> }) {
   const sp = (props.searchParams ? await props.searchParams : {}) as SearchParams
-
   const s = await createClientServer()
 
   const q = (sp.q ?? '').trim()
@@ -21,13 +20,13 @@ export default async function TagsIndex(props: { searchParams: Promise<SearchPar
   const to = from + PAGE_SIZE - 1
 
   let query = s
-    .from('tag_resource_counts')
+    .from('tag_counts')
     .select('slug, name, resource_count', { count: 'exact' })
 
   if (q) query = query.ilike('name', `%${q}%`)
   query =
     sort === 'popular'
-      ? query.order('resource_count', { ascending: false })
+      ? query.order('resource_count', { ascending: false, nullsFirst: false }).order('name', { ascending: true })
       : query.order('name', { ascending: true })
 
   const { data, count, error } = await query.range(from, to)
@@ -45,7 +44,12 @@ export default async function TagsIndex(props: { searchParams: Promise<SearchPar
           <p className="text-sm text-gray-600">Browse tags by popularity or name.</p>
         </div>
         <form action="/tags" className="flex gap-2">
-          <input name="q" defaultValue={q} placeholder="Filter tags…" className="border rounded-xl px-3 py-2 text-sm" />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Filter tags…"
+            className="border rounded-xl px-3 py-2 text-sm"
+          />
           <select name="sort" defaultValue={sort} className="border rounded-xl px-3 py-2 text-sm">
             <option value="popular">Popular</option>
             <option value="name">Name</option>
@@ -63,9 +67,9 @@ export default async function TagsIndex(props: { searchParams: Promise<SearchPar
               <Link
                 href={`/tags/${t.slug}`}
                 className="rounded-full border px-3 py-1 text-sm hover:bg-gray-50"
-                title={`${t.resource_count} resource${t.resource_count === 1 ? '' : 's'}`}
+                title={`${t.resource_count ?? 0} resource${(t.resource_count ?? 0) === 1 ? '' : 's'}`}
               >
-                #{t.name} <span className="text-gray-500">({t.resource_count})</span>
+                #{t.name} <span className="text-gray-500">({t.resource_count ?? 0})</span>
               </Link>
             </li>
           ))}
@@ -98,9 +102,15 @@ function Pager({
   if (pageCount <= 1) return null
   return (
     <nav className="mt-6 flex items-center gap-2">
-      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">Prev</a>
-      <span className="text-sm text-gray-600">Page {page} / {pageCount}</span>
-      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">Next</a>
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Prev
+      </a>
+      <span className="text-sm text-gray-600">
+        Page {page} / {pageCount}
+      </span>
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+        Next
+      </a>
     </nav>
   )
 }

@@ -1,92 +1,63 @@
-'use client'
-
+// src/components/SiteHeader.tsx
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Shield, LogOut, LogIn } from 'lucide-react'
-import { createClientBrowser } from '@/lib/supabase-browser'
-import { useEffect, useState } from 'react'
+import { createClientServer } from '@/lib/supabase-server'
 
-export function SiteHeader() {
-  const supabase = createClientBrowser()
-  const pathname = usePathname()
-  const [isAuthed, setAuthed] = useState(false)
-  const [isAdmin, setAdmin] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    supabase.auth.getUser().then(async ({ data }) => {
-      const user = data.user
-      if (!active) return
-      setAuthed(!!user)
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_admin')
-          .eq('id', user.id)
-          .maybeSingle()
-        if (active) setAdmin(!!profile?.is_admin)
-      } else {
-        setAdmin(false)
-      }
-    })
-    return () => { active = false }
-  }, [pathname, supabase])
-
-  const NavLink = ({ href, label }: { href: string; label: string }) => {
-    const active = pathname === href
-    return (
-      <Link
-        href={href}
-        className={`rounded-md px-3 py-2 text-sm font-medium ${
-          active ? 'bg-gray-100 text-gray-900' : 'text-gray-600 hover:text-gray-900'
-        }`}
-      >
-        {label}
-      </Link>
-    )
-  }
+export async function SiteHeader() {
+  const s = await createClientServer()
+  const { data: auth } = await s.auth.getUser()
+  const user = auth?.user ?? null
 
   return (
-    <header className="border-b bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-      <div className="container flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white shadow-soft">
-            <Shield size={18} />
-          </span>
-          <span className="text-lg font-semibold">Cyber Directory</span>
-        </Link>
+    <header className="border-b bg-white">
+      <div className="container mx-auto flex items-center justify-between gap-4 py-4">
+        {/* Brand */}
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-lg font-semibold">
+            Cyber Directory
+          </Link>
 
-        <nav className="flex items-center gap-1">
-          <NavLink href="/resources" label="Resources" />
-          <NavLink href="/tags" label="Tags" />
-          <NavLink href="/categories" label="Categories" />
-          <NavLink href="/submit" label="Submit" />
-          {isAdmin && <NavLink href="/admin/submissions" label="Admin" />}
-          {isAuthed && <NavLink href="/me/saves" label="My saves" />}
-        </nav>
+          {/* Primary nav */}
+          <nav className="hidden md:flex items-center gap-3 text-sm text-gray-700">
+            <Link href="/resources" className="rounded px-2 py-1 hover:bg-gray-50">Resources</Link>
+            <Link href="/tags" className="rounded px-2 py-1 hover:bg-gray-50">Tags</Link>
+            <Link href="/categories" className="rounded px-2 py-1 hover:bg-gray-50">Categories</Link>
+            <Link href="/submit" className="rounded px-2 py-1 hover:bg-gray-50">Submit</Link>
+          </nav>
+        </div>
 
+        {/* Right side: auth/quick links */}
         <div className="flex items-center gap-2">
-          {!isAuthed ? (
-            <Link
-              href={`/login?next=${encodeURIComponent(pathname || '/')}`}
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <LogIn size={16} />
-              Sign in
-            </Link>
+          {user ? (
+            <>
+              <Link
+                href="/me/saves"
+                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+              >
+                My saves
+              </Link>
+              <span className="hidden sm:inline text-xs text-gray-500 px-2 truncate max-w-[200px]">
+                {user.email}
+              </span>
+            </>
           ) : (
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut()
-                window.location.href = '/'
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-black"
+            <Link
+              href="/login"
+              className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
             >
-              <LogOut size={16} />
-              Sign out
-            </button>
+              Log in
+            </Link>
           )}
         </div>
+      </div>
+
+      {/* Mobile secondary row */}
+      <div className="md:hidden border-t">
+        <nav className="container mx-auto flex flex-wrap items-center gap-2 py-2 text-sm text-gray-700">
+          <Link href="/resources" className="rounded px-2 py-1 hover:bg-gray-50">Resources</Link>
+          <Link href="/tags" className="rounded px-2 py-1 hover:bg-gray-50">Tags</Link>
+          <Link href="/categories" className="rounded px-2 py-1 hover:bg-gray-50">Categories</Link>
+          <Link href="/submit" className="rounded px-2 py-1 hover:bg-gray-50">Submit</Link>
+        </nav>
       </div>
     </header>
   )
