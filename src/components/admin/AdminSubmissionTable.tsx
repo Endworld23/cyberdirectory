@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import clsx from 'clsx';
 
 type Row = {
   id: string;
@@ -11,7 +10,6 @@ type Row = {
   created_at: string;
   email: string | null;
   user_id: string | null;
-  status: 'pending' | 'approved' | 'rejected';
 };
 
 export default function AdminSubmissionTable({ rows: initial }: { rows: Row[] }) {
@@ -29,7 +27,7 @@ export default function AdminSubmissionTable({ rows: initial }: { rows: Row[] })
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to approve');
-      setRows((r) => r.map((x) => (x.id === id ? { ...x, status: 'approved' } : x)));
+      setRows((r) => r.filter((x) => x.id !== id));
       if (json.slug) window.open(`/resources/${json.slug}`, '_blank');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to approve');
@@ -50,7 +48,7 @@ export default function AdminSubmissionTable({ rows: initial }: { rows: Row[] })
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) throw new Error(json?.error || 'Failed to reject');
-      setRows((r) => r.map((x) => (x.id === id ? { ...x, status: 'rejected' } : x)));
+      setRows((r) => r.filter((x) => x.id !== id));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to reject');
     } finally {
@@ -67,7 +65,6 @@ export default function AdminSubmissionTable({ rows: initial }: { rows: Row[] })
             <th className="px-3 py-2 text-left">URL</th>
             <th className="px-3 py-2">Submitted</th>
             <th className="px-3 py-2">Submitter</th>
-            <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Actions</th>
           </tr>
         </thead>
@@ -76,61 +73,23 @@ export default function AdminSubmissionTable({ rows: initial }: { rows: Row[] })
             <tr key={r.id} className="border-t">
               <td className="px-3 py-2 align-top">
                 <div className="font-medium">{r.title}</div>
-                {r.description && (
-                  <div className="text-gray-600 mt-1 max-w-md break-words">{r.description}</div>
-                )}
+                {r.description && <div className="text-gray-600 mt-1 max-w-md break-words">{r.description}</div>}
               </td>
               <td className="px-3 py-2 align-top">
-                <a href={r.url} target="_blank" rel="noreferrer" className="underline break-all">
-                  {r.url}
-                </a>
+                <a href={r.url} target="_blank" rel="noreferrer" className="underline break-all">{r.url}</a>
               </td>
               <td className="px-3 py-2 align-top">{new Date(r.created_at).toLocaleString()}</td>
+              <td className="px-3 py-2 align-top">{r.email ?? (r.user_id ? 'Signed-in user' : 'Unknown')}</td>
               <td className="px-3 py-2 align-top">
-                {r.email ?? (r.user_id ? 'Signed-in user' : 'Unknown')}
-              </td>
-              <td className="px-3 py-2 align-top">
-                <span
-                  className={clsx(
-                    'rounded px-2 py-0.5 text-xs',
-                    r.status === 'pending' && 'bg-amber-50 text-amber-800 border border-amber-200',
-                    r.status === 'approved' && 'bg-green-50 text-green-800 border border-green-200',
-                    r.status === 'rejected' && 'bg-red-50 text-red-800 border border-red-200'
-                  )}
-                >
-                  {r.status}
-                </span>
-              </td>
-              <td className="px-3 py-2 align-top">
-                {r.status === 'pending' ? (
-                  <div className="flex gap-2 justify-center">
-                    <button
-                      onClick={() => approve(r.id)}
-                      disabled={busyId === r.id}
-                      className="rounded border px-2 py-1 hover:bg-gray-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => reject(r.id)}
-                      disabled={busyId === r.id}
-                      className="rounded border px-2 py-1 hover:bg-gray-50"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-400">—</div>
-                )}
+                <div className="flex gap-2 justify-center">
+                  <button onClick={() => approve(r.id)} disabled={busyId===r.id} className="rounded border px-2 py-1 hover:bg-gray-50">Approve</button>
+                  <button onClick={() => reject(r.id)} disabled={busyId===r.id} className="rounded border px-2 py-1 hover:bg-gray-50">Reject</button>
+                </div>
               </td>
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr>
-              <td className="px-3 py-6 text-center text-gray-600" colSpan={6}>
-                No submissions found.
-              </td>
-            </tr>
+            <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-600">No pending submissions.</td></tr>
           )}
         </tbody>
       </table>
