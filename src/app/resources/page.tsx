@@ -1,3 +1,4 @@
+// src/app/resources/page.tsx
 import Link from 'next/link'
 import Image from 'next/image'
 import { createClientServer } from '@/lib/supabase-server'
@@ -28,13 +29,15 @@ type Row = {
   trending_score?: number | null
 }
 
-export default async function ResourcesIndex({ searchParams }: { searchParams: SearchParams }) {
+export default async function ResourcesIndex(props: { searchParams: Promise<SearchParams> }) {
+  const sp = (props.searchParams ? await props.searchParams : {}) as SearchParams
+
   const s = await createClientServer()
-  const q = (searchParams.q ?? '').trim()
-  const pricing = (searchParams.pricing ?? '').trim()
-  const tagSlug = (searchParams.tag ?? '').trim()
-  const sort = (searchParams.sort as 'trending' | 'new') || 'trending'
-  const page = Math.max(1, Number(searchParams.page ?? '1') || 1)
+  const q = (sp.q ?? '').trim()
+  const pricing = (sp.pricing ?? '').trim()
+  const tagSlug = (sp.tag ?? '').trim()
+  const sort = (sp.sort as 'trending' | 'new') || 'trending'
+  const page = Math.max(1, Number(sp.page ?? '1') || 1)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
