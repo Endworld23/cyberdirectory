@@ -1,3 +1,4 @@
+// src/app/tags/page.tsx
 import Link from 'next/link'
 import { createClientServer } from '@/lib/supabase-server'
 
@@ -8,12 +9,14 @@ const PAGE_SIZE = 48
 type SearchParams = { q?: string; page?: string; sort?: 'popular' | 'name' }
 type Row = { slug: string; name: string; resource_count: number }
 
-export default async function TagsIndex({ searchParams }: { searchParams: SearchParams }) {
+export default async function TagsIndex(props: { searchParams: Promise<SearchParams> }) {
+  const sp = (props.searchParams ? await props.searchParams : {}) as SearchParams
+
   const s = await createClientServer()
 
-  const q = (searchParams.q ?? '').trim()
-  const sort = (searchParams.sort as 'popular' | 'name') || 'popular'
-  const page = Math.max(1, Number(searchParams.page ?? '1') || 1)
+  const q = (sp.q ?? '').trim()
+  const sort = (sp.sort as 'popular' | 'name') || 'popular'
+  const page = Math.max(1, Number(sp.page ?? '1') || 1)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
@@ -22,9 +25,10 @@ export default async function TagsIndex({ searchParams }: { searchParams: Search
     .select('slug, name, resource_count', { count: 'exact' })
 
   if (q) query = query.ilike('name', `%${q}%`)
-  query = sort === 'popular'
-    ? query.order('resource_count', { ascending: false })
-    : query.order('name', { ascending: true })
+  query =
+    sort === 'popular'
+      ? query.order('resource_count', { ascending: false })
+      : query.order('name', { ascending: true })
 
   const { data, count, error } = await query.range(from, to)
   if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
