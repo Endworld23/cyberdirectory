@@ -1,65 +1,64 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { createClientBrowser } from '@/lib/supabase-browser'
+import { useEffect, useState } from 'react';
+import { createClientBrowser } from '@/lib/supabase-browser';
 
 type CommentRow = {
-  id: string
-  body: string
-  created_at: string
-  user_id: string | null
-}
+  id: string;
+  body: string;
+  created_at: string;
+  user_id: string | null;
+};
 
 export default function CommentsSection({ resourceId }: { resourceId: string }) {
-  const sb = createClientBrowser()
-  const [rows, setRows] = useState<CommentRow[]>([])
-  const [body, setBody] = useState('')
-  const [busy, setBusy] = useState(false)
+  const sb = createClientBrowser();
+  const [rows, setRows] = useState<CommentRow[]>([]);
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
 
   async function load() {
     const { data, error } = await sb
       .from('comments')
       .select('id, body, created_at, user_id')
       .eq('resource_id', resourceId)
-      .order('created_at', { ascending: false })
-    if (!error) setRows(data || [])
+      .eq('is_deleted', false) // hide soft-deleted if present
+      .order('created_at', { ascending: false });
+    if (!error) setRows(data || []);
   }
 
   useEffect(() => {
-    void load()
-    const ch = sb
-      .channel(`comments_${resourceId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'comments', filter: `resource_id=eq.${resourceId}` },
-        () => { void load() }
-      )
-      .subscribe()
-    return () => { sb.removeChannel(ch) }
+    void load();
+    // Realtime not available on your project yet; uncomment when enabled:
+    // const ch = sb
+    //   .channel(`comments_${resourceId}`)
+    //   .on('postgres_changes',
+    //     { event: '*', schema: 'public', table: 'comments', filter: `resource_id=eq.${resourceId}` },
+    //     () => { void load(); }
+    //   )
+    //   .subscribe();
+    // return () => { sb.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resourceId])
+  }, [resourceId]);
 
   async function post(e: React.FormEvent) {
-    e.preventDefault()
-    const text = body.trim()
-    if (!text || busy) return
-    setBusy(true)
+    e.preventDefault();
+    const text = body.trim();
+    if (!text || busy) return;
+    setBusy(true);
     try {
       const res = await fetch('/api/comments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resourceId, content: text }),
-      })
-      if (res.status === 401) return alert('Please sign in to comment.')
-      if (res.status === 403) return alert('Please verify your email to comment.')
-      const json: { ok?: boolean; error?: string } = await res.json()
-      if (!json.ok) {
-        return alert(json.error || 'Unable to post comment.')
-      }
-      setBody('')
-      await load()
+      });
+      if (res.status === 401) return alert('Please sign in to comment.');
+      if (res.status === 403) return alert('Please verify your email to comment.');
+      const json: { ok?: boolean; error?: string } = await res.json();
+      if (!json.ok) return alert(json.error || 'Unable to post comment.');
+      setBody('');
+      await load();
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -89,5 +88,5 @@ export default function CommentsSection({ resourceId }: { resourceId: string }) 
         {rows.length === 0 && <li className="text-sm text-gray-600">No comments yet.</li>}
       </ul>
     </section>
-  )
+  );
 }
