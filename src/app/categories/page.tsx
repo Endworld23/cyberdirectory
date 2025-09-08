@@ -1,3 +1,4 @@
+// src/app/categories/page.tsx
 import Link from 'next/link'
 import Image from 'next/image'
 import { notFound } from 'next/navigation'
@@ -12,11 +13,12 @@ type SearchParams = { q?: string | string[]; page?: string | string[] }
 export default async function CategoriesPage(props: {
   searchParams: Promise<SearchParams>
 }) {
+  // Next 15 provides promise-based searchParams in this project setup
   const searchParams = (props.searchParams ? await props.searchParams : {}) as SearchParams
 
   const s = await createClientServer()
 
-  // Pull categories
+  // Load categories (used for labels below)
   const { data: cats, error: eCats } = await s.from('categories').select('id, name, slug')
   if (eCats || !cats) return notFound()
 
@@ -27,7 +29,7 @@ export default async function CategoriesPage(props: {
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  // Query resources across all categories (optional)
+  // Query resources across all categories (filterable by q)
   let query = s
     .from('resource_public_stats')
     .select(
@@ -94,9 +96,7 @@ export default async function CategoriesPage(props: {
                     <span>👍 {r.votes_count ?? 0}</span>
                     <span>💬 {r.comments_count ?? 0}</span>
                   </div>
-                  {cat && (
-                    <div className="mt-2 text-xs text-gray-400">Category: {cat.name}</div>
-                  )}
+                  {cat && <div className="mt-2 text-xs text-gray-400">Category: {cat.name}</div>}
                 </Link>
               </li>
             )
