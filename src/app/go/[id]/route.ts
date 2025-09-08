@@ -1,41 +1,71 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClientServer } from '@/lib/supabase-server'
 
-export const dynamic = 'force-dynamic'
+type Params = { id: string }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const s = await createClientServer()
+// NOTE: In this project’s Next.js 15 setup, the route context uses promise-based params.
+// We type it accordingly and await before use.
+export async function GET(
+  req: Request,
+  ctx: { params: Promise<Params> }
+) {
+  const { id } = await ctx.params
 
-  // Look up destination URL
-  const { data: resRow } = await s
-    .from('resources')
-    .select('url')
-    .eq('id', params.id)
-    .maybeSingle()
-
-  const dest = resRow?.url ?? '/'
-
-  // Best-effort click log (ignore errors)
-  try {
-    const referer = req.headers.get('referer') ?? null
-    const userAgent = req.headers.get('user-agent') ?? null
-    const ipHeader = req.headers.get('x-forwarded-for')
-    const ip = ipHeader ? ipHeader.split(',')[0].trim() : null
-
-    const { data: auth } = await s.auth.getUser()
-
-    await s.from('clicks').insert({
-      resource_id: params.id,
-      user_id: auth?.user?.id ?? null,
-      referer,
-      user_agent: userAgent,
-      ip
-    })
-  } catch {
-    // swallow logging errors
+  // Defensive guard
+  if (!id || typeof id !== 'string') {
+    return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
 
-  // Redirect (supports relative or absolute dest)
-  const target = dest.startsWith('http') ? dest : new URL(dest, req.url).toString()
-  return NextResponse.redirect(target)
+  const s = await createClientServer()
+
+  // Try resolving a destination URL from a shortlink-like table first
+  let targetUrl: string | null = null
+
+  // Attempt 1: go_links(id -> target_url)
+  try {
+    const { data, error } = await s
+      .from('go_links')
+      .select('target_url')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (!error && data?.target_url) {
+      targetUrl = data.target_url
+    }
+  } catch {
+    // ignore lookup errors; we'll try additional fallbacks
+  }
+
+  // Attempt 2: resources(id or slug -> url)
+  if (!targetUrl) {
+    try {
+      const { data } = await s
+        .from('resources')
+        .select('url, slug')
+        .or(`id.eq.${id},slug.eq.${id}`)
+        .maybeSingle()
+
+      if (data?.url) {
+        targetUrl = data.url
+      }
+    } catch {
+      // ignore; we'll fallback below
+    }
+  }
+
+  // Final fallback: send users to our internal resource page if nothing else resolves
+  if (!targetUrl) {
+    const fallback = new URL(`/resources/${encodeURIComponent(id)}`, req.url)
+    return NextResponse.redirect(fallback, 302)
+  }
+
+  // Normalize target to an absolute URL if someone stored it without a scheme
+  try {
+    // Will throw if not a valid absolute URL
+    new URL(targetUrl)
+  } catch {
+    targetUrl = `https://${targetUrl}`
+  }
+
+  return NextResponse.redirect(targetUrl, 302)
 }
