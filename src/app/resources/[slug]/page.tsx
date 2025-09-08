@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
-import VoteButtons from '@/components/VoteButtons'
+import VoteWidget from '@/components/VoteWidget'
 import CommentsSection from '@/components/CommentsSection'
 import SaveButton from '@/components/SaveButton'
 
@@ -106,25 +106,8 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
     tags = (tagRows ?? []) as TagRow[]
   }
 
-  // Votes: count + did current user vote
-  const { count: voteCount } = await s
-    .from('votes')
-    .select('*', { count: 'exact', head: true })
-    .eq('resource_id', r.id)
-
-  const { data: auth } = await s.auth.getUser()
-  let initialVoted = false
-  if (auth?.user) {
-    const { data: mine } = await s
-      .from('votes')
-      .select('id')
-      .eq('resource_id', r.id)
-      .eq('user_id', auth.user.id)
-      .maybeSingle()
-    initialVoted = !!mine
-  }
-
   // Saved?
+  const { data: auth } = await s.auth.getUser()
   let initialSaved = false
   if (auth?.user) {
     const { data: fav } = await s
@@ -199,11 +182,7 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
         </div>
 
         {/* Votes */}
-        <VoteButtons
-          resourceId={r.id}
-          initialCount={voteCount ?? 0}
-          initialVoted={initialVoted}
-        />
+        <VoteWidget resourceId={r.id} />
       </header>
 
       {/* Comments */}
