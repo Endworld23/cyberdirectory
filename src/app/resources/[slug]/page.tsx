@@ -26,8 +26,17 @@ type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
 type Params = { slug: string }
 
+type RelatedRow = {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  logo_url: string | null
+  pricing: ResourceRow['pricing'] | null
+}
+
 // Small helper
-const site = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 /* ------------------ Metadata ------------------ */
 export async function generateMetadata(
@@ -50,6 +59,7 @@ export async function generateMetadata(
   return {
     title,
     description,
+    alternates: { canonical: `${site}/resources/${slug}` },
     openGraph: {
       title,
       description,
@@ -69,7 +79,6 @@ export async function generateMetadata(
 /* ------------------ Page ------------------ */
 export default async function ResourceBySlug({ params }: { params: Promise<Params> }) {
   const { slug } = await params
-
   const s = await createClientServer()
 
   // Load resource
@@ -97,8 +106,10 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
     .from('resource_tags')
     .select('tag_id')
     .eq('resource_id', r.id)
+
+  const tagIds: string[] = (rt ?? []).map(x => x.tag_id as string)
+
   let tags: TagRow[] = []
-  const tagIds = (rt ?? []).map(x => x.tag_id as string)
   if (tagIds.length) {
     const { data: tagRows } = await s
       .from('tags')
@@ -122,14 +133,7 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
   }
 
   // Related resources (share at least one tag, exclude current)
-  let related: Array<{
-    id: string
-    slug: string
-    title: string
-    description: string | null
-    logo_url: string | null
-    pricing: ResourceRow['pricing'] | null
-  }> = []
+  let related: RelatedRow[] = []
   if (tagIds.length) {
     const { data: rows1 } = await s
       .from('resource_tags')
@@ -146,7 +150,8 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
         .eq('is_approved', true)
         .order('created_at', { ascending: false })
         .limit(6)
-      related = (rows2 ?? []) as typeof related
+
+      related = (rows2 ?? []) as RelatedRow[]
     }
   }
 

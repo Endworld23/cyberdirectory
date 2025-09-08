@@ -2,11 +2,13 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { createClientServer } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 24
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 type Params = { slug: string }
 type SearchParams = { q?: string; page?: string; sort?: 'trending' | 'new' | 'top' }
@@ -23,6 +25,16 @@ type Row = {
   votes_count?: number | null
   comments_count?: number | null
   trending_score?: number | null
+}
+
+export async function generateMetadata(
+  { params }: { params: Promise<Params> }
+): Promise<Metadata> {
+  const { slug } = await params
+  return {
+    alternates: { canonical: `${site}/tags/${slug}` },
+    title: `Tag: ${slug} — Cyber Directory`,
+  }
 }
 
 export default async function TagDetailPage({

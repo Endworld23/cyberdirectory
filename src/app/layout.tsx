@@ -1,12 +1,16 @@
+// src/app/layout.tsx
 import './globals.css';
 import type { ReactNode } from 'react';
 import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
 
 const inter = Inter({ subsets: ['latin'] });
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export const metadata = {
+export const metadata: Metadata = {
+  metadataBase: new URL(site),
   title: 'Cyber Directory',
   description: 'Curated cybersecurity resources you can trust.',
 };
