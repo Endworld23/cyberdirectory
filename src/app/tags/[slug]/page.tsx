@@ -11,12 +11,15 @@ const PAGE_SIZE = 24
 type Params = { slug: string }
 type SearchParams = { q?: string; page?: string }
 
-export default async function TagDetailPage(props: {
+export default async function TagDetailPage({
+  params,
+  searchParams,
+}: {
   params: Promise<Params>
-  searchParams: Promise<SearchParams>
+  searchParams?: Promise<SearchParams>
 }) {
-  const { slug } = await props.params
-  const searchParams = (props.searchParams ? await props.searchParams : {}) as SearchParams
+  const { slug } = await params
+  const sp = (searchParams ? await searchParams : {}) as SearchParams
 
   const s = await createClientServer()
 
@@ -29,13 +32,16 @@ export default async function TagDetailPage(props: {
   if (eTag || !tag) return notFound()
 
   // Pagination / search
-  const q = (searchParams.q ?? '').trim()
-  const page = Math.max(1, Number(searchParams.page ?? '1') || 1)
+  const q = (sp.q ?? '').trim()
+  const page = Math.max(1, Number(sp.page ?? '1') || 1)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
   // Resource ids for this tag
-  const { data: links } = await s.from('resource_tags').select('resource_id').eq('tag_id', tag.id)
+  const { data: links } = await s
+    .from('resource_tags')
+    .select('resource_id')
+    .eq('tag_id', tag.id)
   const resourceIds = (links ?? []).map((r) => r.resource_id as string)
 
   if (resourceIds.length === 0) {
