@@ -13,6 +13,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: 'Cyber Directory',
   description: 'Curated cybersecurity resources you can trust.',
+  // Advertise the public RSS feed
+  alternates: {
+    types: {
+      'application/rss+xml': `${site}/rss.xml`,
+    },
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
