@@ -1,3 +1,4 @@
+// src/app/resources/[slug]/page.tsx
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Metadata } from 'next'
@@ -23,16 +24,19 @@ type ResourceRow = {
 
 type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
+type Params = { slug: string }
 
 /* ------------------ Metadata ------------------ */
 export async function generateMetadata(
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<Params> }
 ): Promise<Metadata> {
+  const { slug } = await params
+
   const s = await createClientServer()
   const { data } = await s
     .from('resources')
     .select('title, description, slug, logo_url')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('is_approved', true)
     .single()
 
@@ -47,7 +51,7 @@ export async function generateMetadata(
     openGraph: {
       title,
       description,
-      url: `${site}/resources/${params.slug}`,
+      url: `${site}/resources/${slug}`,
       images: [{ url: ogImage }],
       type: 'article',
     },
@@ -61,14 +65,16 @@ export async function generateMetadata(
 }
 
 /* ------------------ Page ------------------ */
-export default async function ResourceBySlug({ params }: { params: { slug: string } }) {
+export default async function ResourceBySlug({ params }: { params: Promise<Params> }) {
+  const { slug } = await params
+
   const s = await createClientServer()
 
   // Load resource
   const { data: r, error } = await s
     .from('resources')
     .select('id, slug, title, description, url, logo_url, pricing, is_approved, category_id')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('is_approved', true)
     .single<ResourceRow>()
   if (error || !r) return notFound()
