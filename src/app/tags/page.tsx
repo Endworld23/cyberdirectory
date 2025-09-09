@@ -1,8 +1,17 @@
 // src/app/tags/page.tsx
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createClientServer } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  title: 'All tags — Cyber Directory',
+  description: 'Browse tags with counts of approved cybersecurity resources.',
+  alternates: { canonical: '/tags' },
+  openGraph: { title: 'All tags — Cyber Directory', type: 'website' },
+  twitter: { card: 'summary', title: 'All tags — Cyber Directory' },
+}
 
 const PAGE_SIZE = 48
 

@@ -27,16 +27,42 @@ type Row = {
   trending_score?: number | null
 }
 
+/* ------------------ Metadata ------------------ */
 export async function generateMetadata(
   { params }: { params: Promise<Params> }
 ): Promise<Metadata> {
   const { slug } = await params
+  const s = await createClientServer()
+  const { data: tag } = await s
+    .from('tags')
+    .select('name,slug')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  const title = tag?.name ? `#${tag.name} — Cyber Directory` : `Tag: ${slug} — Cyber Directory`
+  const description = tag?.name
+    ? `Browse cybersecurity resources tagged “${tag.name}”.`
+    : 'Browse tag-based cybersecurity resources.'
+
   return {
+    title,
+    description,
     alternates: { canonical: `${site}/tags/${slug}` },
-    title: `Tag: ${slug} — Cyber Directory`,
+    openGraph: {
+      title,
+      description,
+      url: `${site}/tags/${slug}`,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
   }
 }
 
+/* ------------------ Page ------------------ */
 export default async function TagDetailPage({
   params,
   searchParams,

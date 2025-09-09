@@ -27,16 +27,42 @@ type Row = {
   trending_score?: number | null
 }
 
+/* ------------------ Metadata ------------------ */
 export async function generateMetadata(
   { params }: { params: Promise<Params> }
 ): Promise<Metadata> {
   const { slug } = await params
+  const s = await createClientServer()
+  const { data: cat } = await s
+    .from('categories')
+    .select('name,slug')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  const title = cat?.name ? `${cat.name} — Cyber Directory` : `Category: ${slug} — Cyber Directory`
+  const description = cat?.name
+    ? `Newest cybersecurity resources in the “${cat.name}” category.`
+    : 'Browse category-based cybersecurity resources.'
+
   return {
+    title,
+    description,
     alternates: { canonical: `${site}/categories/${slug}` },
-    title: `Category: ${slug} — Cyber Directory`,
+    openGraph: {
+      title,
+      description,
+      url: `${site}/categories/${slug}`,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
   }
 }
 
+/* ------------------ Page ------------------ */
 export default async function CategoryDetailPage(props: {
   params: Promise<Params>
   searchParams?: Promise<Search>
