@@ -12,48 +12,54 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Approved resources
     const { data: resources } = await s
       .from('resources')
-      .select('slug, updated_at')
+      .select('slug, updated_at, created_at')
       .eq('is_approved', true)
 
-    // All tags (from aggregated view)
+    // Tags & categories from count views
     const { data: tags } = await s
       .from('tag_counts')
       .select('slug')
 
-    // All categories (from aggregated view)
     const { data: categories } = await s
       .from('category_counts')
       .select('slug')
 
     const items: MetadataRoute.Sitemap = [
-      { url: `${base}/`, lastModified: now },
-      { url: `${base}/resources`, lastModified: now },
-      { url: `${base}/tags`, lastModified: now },
-      { url: `${base}/categories`, lastModified: now },
-      { url: `${base}/submit`, lastModified: now },
+      { url: `${base}/`, lastModified: now, changeFrequency: 'daily', priority: 1 },
+      { url: `${base}/resources`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
+      { url: `${base}/tags`, lastModified: now, changeFrequency: 'weekly', priority: 0.6 },
+      { url: `${base}/categories`, lastModified: now, changeFrequency: 'weekly', priority: 0.6 },
+      { url: `${base}/submit`, lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
     ]
 
     // Resource detail pages
     for (const r of resources ?? []) {
+      const lm = r.updated_at ?? r.created_at ?? now.toISOString()
       items.push({
         url: `${base}/resources/${r.slug}`,
-        lastModified: r.updated_at ? new Date(r.updated_at) : now,
+        lastModified: new Date(lm),
+        changeFrequency: 'weekly',
+        priority: 0.8,
       })
     }
 
-    // Tag pages
+    // Tag detail pages
     for (const t of tags ?? []) {
       items.push({
         url: `${base}/tags/${t.slug}`,
         lastModified: now,
+        changeFrequency: 'weekly',
+        priority: 0.5,
       })
     }
 
-    // Category pages
+    // Category detail pages
     for (const c of categories ?? []) {
       items.push({
         url: `${base}/categories/${c.slug}`,
         lastModified: now,
+        changeFrequency: 'weekly',
+        priority: 0.5,
       })
     }
 
@@ -61,11 +67,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   } catch {
     // Fallback: minimal sitemap if DB is unavailable
     return [
-      { url: `${base}/`, lastModified: now },
-      { url: `${base}/resources`, lastModified: now },
-      { url: `${base}/tags`, lastModified: now },
-      { url: `${base}/categories`, lastModified: now },
-      { url: `${base}/submit`, lastModified: now },
+      { url: `${base}/`, lastModified: now, changeFrequency: 'daily', priority: 1 },
+      { url: `${base}/resources`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
+      { url: `${base}/tags`, lastModified: now, changeFrequency: 'weekly', priority: 0.6 },
+      { url: `${base}/categories`, lastModified: now, changeFrequency: 'weekly', priority: 0.6 },
+      { url: `${base}/submit`, lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
     ]
   }
 }
