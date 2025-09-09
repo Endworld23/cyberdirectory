@@ -97,79 +97,105 @@ export default async function TagDetailPage({
     .eq('tag_id', tag.id)
   const resourceIds = (links ?? []).map((r) => r.resource_id as string)
 
-  if (resourceIds.length === 0) {
-    return (
-      <main className="mx-auto max-w-4xl p-6 space-y-6">
-        <Header slug={slug} tagName={tag.name} q={q} sort={sort} total={0} />
-        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-          No resources tagged with “{tag.name}” yet.
-        </div>
-      </main>
-    )
+  // Prepare rows
+  let rows: Row[] = []
+  let total = 0
+
+  if (resourceIds.length) {
+    // Choose source view based on sort
+    const table = sort === 'trending' ? 'resource_trending' : 'resource_public_stats'
+
+    let query = s
+      .from(table)
+      .select('*', { count: 'exact' })
+      .in('id', resourceIds)
+      .eq('is_approved', true)
+
+    // Search (websearch tsvector if available, else fallback)
+    if (q) query = query.textSearch ? query.textSearch('search_vec', q, { type: 'websearch' }) : query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+
+    // Sorting
+    query =
+      sort === 'trending'
+        ? query.order('trending_score', { ascending: false, nullsFirst: false })
+        : sort === 'top'
+        ? query.order('votes_count', { ascending: false, nullsFirst: true }).order('created_at', { ascending: false })
+        : query.order('created_at', { ascending: false })
+
+    const { data, count, error } = await query.range(from, to)
+    if (error) return notFound()
+    rows = (data ?? []) as Row[]
+    total = count ?? 0
   }
 
-  // Choose source view based on sort
-  const table = sort === 'trending' ? 'resource_trending' : 'resource_public_stats'
+  const pageCount = Math.max(1, Math.ceil((total ?? 0) / PAGE_SIZE))
 
-  let query = s
-    .from(table)
-    .select('*', { count: 'exact' })
-    .in('id', resourceIds)
-    .eq('is_approved', true)
-
-  // Search (websearch tsvector if available, else fallback)
-  if (q) query = query.textSearch ? query.textSearch('search_vec', q, { type: 'websearch' }) : query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
-
-  // Sorting
-  query =
-    sort === 'trending'
-      ? query.order('trending_score', { ascending: false, nullsFirst: false })
-      : sort === 'top'
-      ? query.order('votes_count', { ascending: false, nullsFirst: true }).order('created_at', { ascending: false })
-      : query.order('created_at', { ascending: false })
-
-  const { data, count, error } = await query.range(from, to)
-  if (error) return notFound()
-
-  const rows = (data ?? []) as Row[]
-  const total = count ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  // JSON-LD for this collection page (current page slice)
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: `Resources tagged ${tag.name}`,
+    url: `${site}/tags/${slug}`,
+    hasPart: {
+      '@type': 'ItemList',
+      numberOfItems: rows.length,
+      itemListElement: rows.map((r, i) => ({
+        '@type': 'ListItem',
+        position: from + i + 1,
+        url: `${site}/resources/${r.slug}`,
+        name: r.title,
+      })),
+    },
+  }
 
   return (
     <main className="mx-auto max-w-4xl p-6 space-y-6">
       <Header slug={slug} tagName={tag.name} q={q} sort={sort} total={total} />
 
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {rows.map((r) => (
-          <li key={r.id} className="rounded-xl border p-4 hover:shadow">
-            <Link href={`/resources/${r.slug}`} className="block">
-              {r.logo_url && (
-                <Image
-                  src={r.logo_url}
-                  alt={`${r.title} logo`}
-                  width={40}
-                  height={40}
-                  className="mb-2 h-10 w-10 object-contain"
-                />
-              )}
-              <div className="font-medium">{r.title}</div>
-              {r.description && (
-                <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
-              )}
-              <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
-              <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
-                <span>👍 {r.votes_count ?? 0}</span>
-                <span>💬 {r.comments_count ?? 0}</span>
-                {sort === 'trending' && typeof r.trending_score === 'number' && (
-                  <span className="text-gray-400">score {(r.trending_score ?? 0).toFixed(3)}</span>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
+          No resources tagged with “{tag.name}” yet.
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {rows.map((r) => (
+            <li key={r.id} className="rounded-xl border p-4 hover:shadow">
+              <Link href={`/resources/${r.slug}`} className="block">
+                {r.logo_url && (
+                  <Image
+                    src={r.logo_url}
+                    alt={`${r.title} logo`}
+                    width={40}
+                    height={40}
+                    className="mb-2 h-10 w-10 object-contain"
+                  />
                 )}
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+                <div className="font-medium">{r.title}</div>
+                {r.description && (
+                  <div className="mt-1 line-clamp-3 text-sm text-gray-600">{r.description}</div>
+                )}
+                <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
+                <div className="mt-2 text-xs text-gray-500 flex items-center gap-3">
+                  <span>👍 {r.votes_count ?? 0}</span>
+                  <span>💬 {r.comments_count ?? 0}</span>
+                  {sort === 'trending' && typeof r.trending_score === 'number' && (
+                    <span className="text-gray-400">score {(r.trending_score ?? 0).toFixed(3)}</span>
+                  )}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <Pager base={`/tags/${slug}`} page={page} pageCount={pageCount} params={{ q, sort }} />
+
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
     </main>
   )
 }

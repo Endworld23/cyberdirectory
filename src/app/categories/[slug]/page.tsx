@@ -115,6 +115,24 @@ export default async function CategoryDetailPage(props: {
   const total = count ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
+  // JSON-LD for this collection page (current page slice)
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: `Resources in ${cat.name}`,
+    url: `${site}/categories/${slug}`,
+    hasPart: {
+      '@type': 'ItemList',
+      numberOfItems: rows.length,
+      itemListElement: rows.map((r, i) => ({
+        '@type': 'ListItem',
+        position: from + i + 1,
+        url: `${site}/resources/${r.slug}`,
+        name: r.title,
+      })),
+    },
+  }
+
   return (
     <main className="mx-auto max-w-4xl p-6 space-y-6">
       <header className="flex items-end justify-between gap-3">
@@ -177,6 +195,13 @@ export default async function CategoryDetailPage(props: {
       )}
 
       <Pager base={`/categories/${slug}`} page={page} pageCount={pageCount} params={{ q, sort }} />
+
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
     </main>
   )
 }
