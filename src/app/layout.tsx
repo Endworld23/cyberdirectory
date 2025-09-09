@@ -13,17 +13,20 @@ export const metadata: Metadata = {
   metadataBase: new URL(site),
   title: 'Cyber Directory',
   description: 'Curated cybersecurity resources you can trust.',
-  // Advertise the public RSS feed
-  alternates: {
-    types: {
-      'application/rss+xml': `${site}/rss.xml`,
-    },
-  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={inter.className}>
+      <head>
+        {/* OpenSearch: enables “Add search engine” in browsers */}
+        <link
+          rel="search"
+          type="application/opensearchdescription+xml"
+          href="/opensearch.xml"
+          title="Cyber Directory Search"
+        />
+      </head>
       <body>
         <SiteHeader />
         <main className="container py-8">{children}</main>
