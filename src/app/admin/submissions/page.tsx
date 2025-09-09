@@ -1,3 +1,4 @@
+// src/app/admin/submissions/page.tsx
 // Server Component
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -24,6 +25,8 @@ const PAGE_SIZE = 20
 type Status = 'pending' | 'approved' | 'rejected'
 
 function Tab({ to, active }: { to: string; active: boolean }) {
+  const qs = new URLSearchParams(to.split('?')[1] || '')
+  const label = (qs.get('status') || 'pending').replace(/^\w/, c => c.toUpperCase())
   return (
     <Link
       href={to}
@@ -32,16 +35,18 @@ function Tab({ to, active }: { to: string; active: boolean }) {
         active ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300',
       ].join(' ')}
     >
-      {new URLSearchParams(to.split('?')[1]).get('status')!.replace(/^\w/, c => c.toUpperCase())}
+      {label}
     </Link>
   )
 }
 
-export default async function AdminSubmissionsPage({
-  searchParams,
-}: {
-  searchParams?: { status?: string; page?: string; q?: string }
+type SearchParams = { status?: string; page?: string; q?: string }
+
+export default async function AdminSubmissionsPage(props: {
+  searchParams?: Promise<SearchParams>
 }) {
+  const sp = (props.searchParams ? await props.searchParams : {}) as SearchParams
+
   const s = await createClientServer()
 
   // 🔐 Admin check
@@ -57,11 +62,11 @@ export default async function AdminSubmissionsPage({
 
   // Params
   const status: Status =
-    (['pending', 'approved', 'rejected'].includes((searchParams?.status || '').toLowerCase())
-      ? (searchParams!.status!.toLowerCase() as Status)
+    (['pending', 'approved', 'rejected'].includes((sp.status || '').toLowerCase())
+      ? (sp.status!.toLowerCase() as Status)
       : 'pending')
-  const page = Math.max(1, parseInt(searchParams?.page || '1', 10) || 1)
-  const q = (searchParams?.q || '').trim()
+  const page = Math.max(1, parseInt(sp.page || '1', 10) || 1)
+  const q = (sp.q || '').trim()
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
@@ -74,11 +79,8 @@ export default async function AdminSubmissionsPage({
     .range(from, to)
 
   if (q) {
-    // Supabase 'or' filter with ilike across fields
     const like = `%${q}%`
-    query = query.or(
-      `title.ilike.${like},url.ilike.${like},description.ilike.${like}`
-    )
+    query = query.or(`title.ilike.${like},url.ilike.${like},description.ilike.${like}`)
   }
 
   const { data: subs, error, count } = await query
