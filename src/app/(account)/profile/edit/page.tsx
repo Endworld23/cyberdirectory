@@ -9,21 +9,35 @@ import EditProfileForm from '../EditProfileForm';
 
 import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
+import AccountNav from '../_components/AccountNav';
+import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
 async function resendVerificationAction() {
   'use server';
   const sb = await createClientServer();
+  const c = await cookies();
+
+  // Simple cooldown: 60 seconds between sends
+  const last = c.get('cd_resend_ts')?.value;
+  const now = Date.now();
+  const lastMs = last ? Number(last) : 0;
+  if (lastMs && now - lastMs < 60_000) {
+    // Too soon; just revalidate so UI updates remaining time
+    revalidatePath('/profile/edit');
+    return;
+  }
+
   const { data } = await sb.auth.getUser();
   const email = data?.user?.email;
   if (!email) return;
   try {
-    // Attempt to resend a confirmation/verification email
-    // Using Supabase JS v2 API; safe no-op if already confirmed
     await sb.auth.resend({ type: 'signup', email });
+    // store send timestamp (httpOnly cookie)
+    c.set('cd_resend_ts', String(now), { httpOnly: true, sameSite: 'lax', path: '/profile', maxAge: 60 });
   } catch (_e) {
-    // Swallow errors; we don't want to leak specifics here
+    // swallow errors intentionally
   }
   revalidatePath('/profile/edit');
 }
@@ -54,6 +68,13 @@ export default async function EditProfilePage() {
   const emailConfirmedAt = (auth.user as any).email_confirmed_at as string | null | undefined;
   const isVerified = Boolean(emailConfirmedAt);
 
+  // Read resend cooldown from cookie
+  const c = await cookies();
+  const last = c.get('cd_resend_ts')?.value;
+  const now = Date.now();
+  const lastMs = last ? Number(last) : 0;
+  const remaining = lastMs ? Math.max(0, 60 - Math.floor((now - lastMs) / 1000)) : 0;
+
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-6">
       {!isVerified && email ? (
@@ -62,8 +83,11 @@ export default async function EditProfilePage() {
             <strong className="font-semibold">Email not verified.</strong> We sent a verification link to <span className="underline">{email}</span>. If you didn’t receive it, you can resend it.
           </div>
           <form action={resendVerificationAction}>
-            <button className="rounded-md border border-amber-300 bg-white/70 px-3 py-1.5 shadow-sm hover:bg-white">
-              Resend
+            <button
+              className="rounded-md border border-amber-300 bg-white/70 px-3 py-1.5 shadow-sm hover:bg-white disabled:opacity-60"
+              disabled={remaining > 0}
+            >
+              {remaining > 0 ? `Resend in ${remaining}s` : 'Resend'}
             </button>
           </form>
         </div>
@@ -75,6 +99,7 @@ export default async function EditProfilePage() {
       <nav className="text-sm text-gray-500">
         <Link href="/profile" className="hover:underline">← Back to profile</Link>
       </nav>
+      <AccountNav />
       <h1 className="text-2xl font-semibold">Edit profile</h1>
       <div className="rounded-lg border p-4 sm:p-6 shadow-sm bg-white">
         <EditProfileForm

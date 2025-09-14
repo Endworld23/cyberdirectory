@@ -1,4 +1,4 @@
-// src/app/resources/trending/page.tsx
+// src/app/resources/top/weekly/page.tsx
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
@@ -15,17 +15,15 @@ export async function toggleSaveAction(formData: FormData) {
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user
   if (!user) return redirect('/login')
-
   const resourceId = String(formData.get('resourceId') ?? '')
   const saved = String(formData.get('saved') ?? '') === 'true'
   if (!resourceId) return
-
   if (saved) {
     await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId)
   } else {
     await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
   }
-  revalidatePath('/resources/trending')
+  revalidatePath('/resources/top/weekly')
 }
 
 export async function voteAction(formData: FormData) {
@@ -34,30 +32,56 @@ export async function voteAction(formData: FormData) {
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user
   if (!user) return redirect('/login')
-
   const resourceId = String(formData.get('resourceId') ?? '')
   const hasVoted = String(formData.get('hasVoted') ?? '') === 'true'
   if (!resourceId) return
-
   if (hasVoted) {
     await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId)
   } else {
     await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
   }
-  revalidatePath('/resources/trending')
+  revalidatePath('/resources/top/weekly')
 }
 
-export default async function TrendingPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function TopWeeklyPage({ searchParams }: { searchParams?: SearchParams }) {
   const s = await createClientServer()
   const sizeRaw = Number((searchParams?.size ?? '10').trim())
   const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 10
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: voteRows, error: vErr } = await s
+    .from('votes')
+    .select('resource_id')
+    .gte('created_at', since)
+    .limit(5000)
+  if (vErr) return <div className="p-6 text-red-600">Error: {vErr.message}</div>
+
+  const counts = new Map<string, number>()
+  for (const row of voteRows ?? []) {
+    const rid = (row as any).resource_id as string
+    counts.set(rid, (counts.get(rid) ?? 0) + 1)
+  }
+  const sortedIds = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, size)
+    .map(([rid]) => rid)
+
+  if (sortedIds.length === 0) {
+    return (
+      <main className="mx-auto max-w-5xl p-6">
+        <header className="mb-4">
+          <h1 className="text-2xl font-semibold">Top — This Week</h1>
+          <p className="text-sm text-gray-600">No votes recorded in the last 7 days.</p>
+        </header>
+      </main>
+    )
+  }
 
   const { data, error } = await s
-    .from('resource_trending')
+    .from('resource_public_stats')
     .select('*')
     .eq('is_approved', true)
-    .order('trending_score', { ascending: false })
-    .limit(size)
+    .in('id', sortedIds)
 
   if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
 
@@ -71,8 +95,10 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     created_at: string | null
     votes_count: number | null
     comments_count: number | null
-    trending_score: number | null
   }>
+
+  const order = new Map(sortedIds.map((id, i) => [id, i]))
+  rows.sort((a, b) => (order.get(a.id)! - order.get(b.id)!))
 
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user ?? null
@@ -88,14 +114,14 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     for (const sv of mySaves.data ?? []) savedIds.add((sv as any).resource_id as string)
   }
 
-  const sizeHref = (n: number) => (n === 10 ? '/resources/trending' : `/resources/trending?size=${n}`)
+  const sizeHref = (n: number) => (n === 10 ? '/resources/top/weekly' : `/resources/top/weekly?size=${n}`)
 
   return (
     <main className="mx-auto max-w-5xl p-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Trending</h1>
-          <p className="text-sm text-gray-600">Top resources right now, based on recent activity.</p>
+          <h1 className="text-2xl font-semibold">Top — This Week</h1>
+          <p className="text-sm text-gray-600">Most votes in the last 7 days.</p>
         </div>
         <div className="flex items-center gap-2">
           {[5, 10, 25].map((n) => (

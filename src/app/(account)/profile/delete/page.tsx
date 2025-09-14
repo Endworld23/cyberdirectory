@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClientServer } from '@/lib/supabase-server';
+import AccountNav from '../_components/AccountNav';
 
 export const metadata = {
   title: 'Delete account · CyberDirectory',
@@ -65,16 +66,17 @@ export default async function DeleteAccountPage({ searchParams }: { searchParams
       <nav className="text-sm text-gray-500">
         <Link href="/profile" className="hover:underline">← Back to profile</Link>
       </nav>
+      <AccountNav />
 
       <h1 className="text-2xl font-semibold text-red-700">Delete account</h1>
 
       {error === 'confirm' && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <div role="status" aria-live="polite" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           Please confirm you understand by checking the box below.
         </div>
       )}
       {error === 'unknown' && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+        <div role="status" aria-live="polite" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
           Something went wrong deleting your account. Please try again.
         </div>
       )}
@@ -90,8 +92,8 @@ export default async function DeleteAccountPage({ searchParams }: { searchParams
         </ul>
 
         <form action={deleteAccountAction} className="space-y-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="confirm" className="h-4 w-4" required />
+          <label htmlFor="confirm" className="flex items-center gap-2 text-sm">
+            <input id="confirm" type="checkbox" name="confirm" className="h-4 w-4" required />
             <span>I understand the consequences of deleting my account.</span>
           </label>
 

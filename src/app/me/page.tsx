@@ -1,157 +1,118 @@
-// src/app/me/page.tsx
-import Link from 'next/link'
-import Image from 'next/image'
-import { redirect } from 'next/navigation'
-import { createClientServer } from '@/lib/supabase-server'
+// src/app/me/submissions/page.tsx
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { createClientServer } from '@/lib/supabase-server';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-type ResourceRow = {
-  id: string
-  slug: string
-  title: string
-  description: string | null
-  logo_url: string | null
-  pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
+type SearchParams = { page?: string };
+
+function clampPage(input?: string) {
+  const n = Number(input);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
 }
 
-export default async function ProfilePage() {
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
+export default async function SubmissionsPage({ searchParams }: { searchParams?: SearchParams }) {
+  const sb = await createClientServer();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth?.user) redirect(`/login?next=${encodeURIComponent('/me/submissions')}`);
 
-  if (!auth?.user) {
-    redirect(`/login?next=${encodeURIComponent('/me')}`)
-  }
+  const pageSize = 20;
+  const page = clampPage(searchParams?.page);
+  const offset = (page - 1) * pageSize;
 
-  // Counts (favorites + submissions)
-  const { count: savesCount } = await s
-    .from('favorites')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', auth.user.id)
-
-  const { count: submissionsCount } = await s
+  // Total count (for pager)
+  const { count: totalCount } = await sb
     .from('submissions')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', auth.user.id)
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', auth.user.id);
 
-  // Recent 6 saves preview (IDs -> resources)
-  const { data: favs } = await s
-    .from('favorites')
-    .select('resource_id, created_at')
+  // Page of submissions — keep the column list conservative to avoid schema surprises
+  const { data: rows, error } = await sb
+    .from('submissions')
+    .select('id, created_at')
     .eq('user_id', auth.user.id)
     .order('created_at', { ascending: false })
-    .limit(6)
+    .range(offset, offset + pageSize - 1);
 
-  const previewIds = (favs ?? []).map(f => f.resource_id as string)
-  let preview: ResourceRow[] = []
-  if (previewIds.length) {
-    const { data: rows } = await s
-      .from('resources')
-      .select('id, slug, title, description, logo_url, pricing')
-      .in('id', previewIds)
-      .eq('is_approved', true)
-    preview = (rows ?? []) as ResourceRow[]
-
-    // Keep preview order matching favorites order
-    const order = new Map(previewIds.map((id, i) => [id, i]))
-    preview.sort((a, b) => (order.get(a.id)! - order.get(b.id)!))
+  if (error) {
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Your submissions</h1>
+            <p className="text-sm text-gray-600">Track everything you have submitted.</p>
+          </div>
+          <Link href="/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
+        </header>
+        <div className="rounded-2xl border bg-white p-6 text-red-700" role="status" aria-live="polite">
+          Failed to load submissions: {error.message}
+        </div>
+      </main>
+    );
   }
 
-  // Basic profile info
-  const email = auth.user.email ?? '—'
-  const created = auth.user.created_at
-    ? new Date(auth.user.created_at).toLocaleString()
-    : ''
+  const items = (rows ?? []).map((r) => ({ id: r.id as string, created_at: String(r.created_at) }));
+  const pageCount = Math.max(1, Math.ceil((totalCount ?? 0) / pageSize));
 
   return (
-    <main className="mx-auto max-w-5xl p-6 space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
+      <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Your profile</h1>
-          <p className="text-sm text-gray-600">Manage your saves and submissions.</p>
+          <h1 className="text-2xl font-semibold">Your submissions</h1>
+          <p className="text-sm text-gray-600">You can submit more at any time.</p>
         </div>
-        <Link href="/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">
-          Submit a resource
-        </Link>
+        <Link href="/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
       </header>
 
-      {/* Account card */}
-      <section className="rounded-2xl border bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm text-gray-500">Signed in as</div>
-            <div className="text-base font-medium">{email}</div>
-            {created && <div className="text-xs text-gray-500">Member since {created}</div>}
-          </div>
-          <nav className="flex items-center gap-2 text-sm">
-            <Link href="/me/saves" className="underline">All saves</Link>
-            <span>•</span>
-            <Link href="/submit" className="underline">New submission</Link>
-          </nav>
+      {items.length === 0 ? (
+        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
+          You haven't submitted anything yet. <Link href="/submit" className="underline">Submit a resource</Link>.
         </div>
-      </section>
-
-      {/* Quick stats */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Saved resources" value={savesCount ?? 0} href="/me/saves" />
-        <StatCard label="Your submissions" value={submissionsCount ?? 0} href="/submit" hint="(review queue)" />
-        <StatCard label="Account" value="Settings" href="/me" hint="coming soon" />
-      </section>
-
-      {/* Recent saves preview */}
-      <section className="space-y-3">
-        <div className="flex items-end justify-between">
-          <h2 className="text-lg font-medium">Recent saves</h2>
-          <Link href="/me/saves" className="text-sm underline">View all</Link>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 text-left">
+              <tr>
+                <th className="px-4 py-2 font-medium">ID</th>
+                <th className="px-4 py-2 font-medium">Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.id} className="border-t">
+                  <td className="px-4 py-2 font-mono text-xs">{it.id}</td>
+                  <td className="px-4 py-2">{new Date(it.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
 
-        {preview.length === 0 ? (
-          <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-            You haven’t saved anything yet. <Link href="/resources" className="underline">Browse resources</Link>.
-          </div>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {preview.map((r) => (
-              <li key={r.id} className="rounded-2xl border p-4 space-y-2">
-                <Link href={`/resources/${r.slug}`} className="block">
-                  <div className="flex items-center gap-3">
-                    {r.logo_url ? (
-                      <Image src={r.logo_url} alt={`${r.title} logo`} width={40} height={40} className="h-10 w-10 object-contain" />
-                    ) : (
-                      <div className="h-10 w-10 rounded bg-gray-100" />
-                    )}
-                    <div className="font-medium truncate">{r.title}</div>
-                  </div>
-                  {r.description && (
-                    <p className="mt-2 line-clamp-3 text-sm text-gray-700">{r.description}</p>
-                  )}
-                  <div className="mt-2 text-xs text-gray-500">Pricing: {r.pricing ?? 'unknown'}</div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Submissions slot (placeholder for now) */}
-      <section className="rounded-2xl border bg-white p-5">
-        <h2 className="text-lg font-medium mb-1">Your submissions</h2>
-        <p className="text-sm text-gray-600">
-          We’ll show your pending/approved/rejected submissions here soon. For now you can{' '}
-          <Link href="/submit" className="underline">submit a new resource</Link>.
-        </p>
-      </section>
+      <Pager page={page} pageCount={pageCount} />
     </main>
-  )
+  );
 }
 
-function StatCard({ label, value, href, hint }: { label: string; value: number | string; href: string; hint?: string }) {
+function Pager({ page, pageCount }: { page: number; pageCount: number }) {
+  function mk(p: number) {
+    const params = new URLSearchParams();
+    if (p > 1) params.set('page', String(p));
+    const q = params.toString();
+    return q ? `/me/submissions?${q}` : '/me/submissions';
+  }
   return (
-    <Link href={href} className="rounded-2xl border bg-white p-5 hover:shadow-sm transition">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-      {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
-    </Link>
-  )
+    <nav className="mt-6 flex items-center gap-2" aria-label="Pagination">
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="prev noopener">
+        Prev
+      </a>
+      <span className="text-sm text-gray-600">
+        Page {page} / {pageCount}
+      </span>
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="next noopener">
+        Next
+      </a>
+    </nav>
+  );
 }
-// 

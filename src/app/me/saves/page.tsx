@@ -4,8 +4,26 @@ import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import SaveButton from '@/components/SaveButton'
+import { revalidatePath } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
+
+// Server action: remove a save (progressive enhancement fallback to client SaveButton)
+export async function removeSaveAction(formData: FormData) {
+  'use server'
+  const s = await createClientServer()
+  const { data: auth } = await s.auth.getUser()
+  const user = auth?.user
+  if (!user) return
+  const resourceId = String(formData.get('resourceId') ?? '')
+  if (!resourceId) return
+  await s
+    .from('saves')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('resource_id', resourceId)
+  revalidatePath('/me/saves')
+}
 
 const PAGE_SIZE = 24
 
@@ -28,8 +46,8 @@ type Row = {
   trending_score?: number | null
 }
 
-export default async function SavedResourcesPage(props: { searchParams: Promise<SearchParams> }) {
-  const sp = (props.searchParams ? await props.searchParams : {}) as SearchParams
+export default async function SavedResourcesPage({ searchParams }: { searchParams?: SearchParams }) {
+  const sp = (searchParams ?? {}) as SearchParams
   const s = await createClientServer()
 
   // Require auth
@@ -41,33 +59,41 @@ export default async function SavedResourcesPage(props: { searchParams: Promise<
 
   const q = (sp.q ?? '').trim()
   const sort = (sp.sort as 'trending' | 'new' | 'top') || 'new'
-  const page = Math.max(1, Number(sp.page ?? '1') || 1)
+  const rawPage = Number(sp.page ?? '1');
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  // Get saved resource IDs
-  const { data: favs, error: favErr } = await s
-    .from('favorites')
-    .select('resource_id')
+  // Get saved resource IDs (uses public.saves)
+  const { data: savesRows, error: savesErr } = await s
+    .from('saves')
+    .select('resource_id, created_at')
     .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
 
-  if (favErr) {
+  if (savesErr) {
     return <main className="mx-auto max-w-5xl p-6">
       <h1 className="text-2xl font-semibold">Saved resources</h1>
-      <p className="mt-4 text-red-600">Failed to load favorites: {favErr.message}</p>
+      <p className="mt-4 text-red-600" role="status" aria-live="polite">Failed to load saves: {savesErr.message}</p>
     </main>
   }
 
-  const resourceIds = (favs ?? []).map(f => f.resource_id as string)
+  // Unique IDs, preserving recent-first order
+  const seen = new Set<string>();
+  const resourceIds = (savesRows ?? [])
+    .map(r => r.resource_id as string)
+    .filter(Boolean)
+    .filter(id => (seen.has(id) ? false : (seen.add(id), true)));
+
   if (resourceIds.length === 0) {
     return (
       <main className="mx-auto max-w-5xl p-6 space-y-6">
         <Header total={0} q={q} sort={sort} />
         <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-          You haven’t saved any resources yet.
+          You haven’t saved any resources yet. Browse the <Link href="/" className="underline">directory</Link> and tap the save button to see items here.
         </div>
       </main>
-    )
+    );
   }
 
   // Pick view based on sort
@@ -80,7 +106,14 @@ export default async function SavedResourcesPage(props: { searchParams: Promise<
     .eq('is_approved', true)
 
   // Search (tsvector websearch if available; fallback to ilike)
-  if (q) query = query.textSearch ? query.textSearch('search_vec', q, { type: 'websearch' }) : query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
+  if (q) {
+    const anyQuery = query as any;
+    if (typeof anyQuery.textSearch === 'function') {
+      query = anyQuery.textSearch('search_vec', q, { type: 'websearch' });
+    } else {
+      query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
+    }
+  }
 
   // Sorting
   query =
@@ -128,7 +161,19 @@ export default async function SavedResourcesPage(props: { searchParams: Promise<
                   {r.title}
                 </Link>
               </div>
-              <SaveButton resourceId={r.id} initialSaved={true} />
+              <div className="flex items-center gap-2">
+                <SaveButton resourceId={r.id} initialSaved={true} />
+                {/* Progressive enhancement: works without JS */}
+                <form action={removeSaveAction}>
+                  <input type="hidden" name="resourceId" value={r.id} />
+                  <button
+                    className="rounded-md border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                    title="Remove from saves"
+                  >
+                    Remove
+                  </button>
+                </form>
+              </div>
             </div>
 
             {r.description && <p className="text-sm text-gray-700 line-clamp-3">{r.description}</p>}
@@ -178,6 +223,9 @@ function Header({ total, q, sort }: { total: number; q: string; sort: 'trending'
           <option value="top">Top (votes)</option>
         </select>
         <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Apply</button>
+        {q && (
+          <a href="/me/saves" className="rounded-xl border px-3 py-2 text-sm">Clear</a>
+        )}
       </form>
     </header>
   )
@@ -201,14 +249,14 @@ function Pager({
   }
   if (pageCount <= 1) return null
   return (
-    <nav className="mt-6 flex items-center gap-2">
-      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+    <nav className="mt-6 flex items-center gap-2" aria-label="Pagination">
+      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="prev noopener">
         Prev
       </a>
       <span className="text-sm text-gray-600">
         Page {page} / {pageCount}
       </span>
-      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="next noopener">
         Next
       </a>
     </nav>

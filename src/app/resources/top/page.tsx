@@ -15,17 +15,15 @@ export async function toggleSaveAction(formData: FormData) {
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user
   if (!user) return redirect('/login')
-
   const resourceId = String(formData.get('resourceId') ?? '')
   const saved = String(formData.get('saved') ?? '') === 'true'
   if (!resourceId) return
-
   if (saved) {
     await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId)
   } else {
     await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
   }
-  revalidatePath('/resources/trending')
+  revalidatePath('/resources/top')
 }
 
 export async function voteAction(formData: FormData) {
@@ -34,29 +32,28 @@ export async function voteAction(formData: FormData) {
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user
   if (!user) return redirect('/login')
-
   const resourceId = String(formData.get('resourceId') ?? '')
   const hasVoted = String(formData.get('hasVoted') ?? '') === 'true'
   if (!resourceId) return
-
   if (hasVoted) {
     await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId)
   } else {
     await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
   }
-  revalidatePath('/resources/trending')
+  revalidatePath('/resources/top')
 }
 
-export default async function TrendingPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function TopAllTimePage({ searchParams }: { searchParams?: SearchParams }) {
   const s = await createClientServer()
-  const sizeRaw = Number((searchParams?.size ?? '10').trim())
-  const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 10
+  const sizeRaw = Number((searchParams?.size ?? '25').trim())
+  const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 25
 
   const { data, error } = await s
-    .from('resource_trending')
+    .from('resource_public_stats')
     .select('*')
     .eq('is_approved', true)
-    .order('trending_score', { ascending: false })
+    .order('votes_count', { ascending: false, nullsFirst: true })
+    .order('created_at', { ascending: false })
     .limit(size)
 
   if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
@@ -71,7 +68,6 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     created_at: string | null
     votes_count: number | null
     comments_count: number | null
-    trending_score: number | null
   }>
 
   const { data: auth } = await s.auth.getUser()
@@ -88,14 +84,19 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     for (const sv of mySaves.data ?? []) savedIds.add((sv as any).resource_id as string)
   }
 
-  const sizeHref = (n: number) => (n === 10 ? '/resources/trending' : `/resources/trending?size=${n}`)
+  const sizeHref = (n: number) => (n === 25 ? '/resources/top' : `/resources/top?size=${n}`)
 
   return (
     <main className="mx-auto max-w-5xl p-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Trending</h1>
-          <p className="text-sm text-gray-600">Top resources right now, based on recent activity.</p>
+          <h1 className="text-2xl font-semibold">Top — All Time</h1>
+          <p className="text-sm text-gray-600">Most voted resources overall.</p>
+          <nav className="mt-1 text-xs text-gray-600">
+            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <a className="underline" href="/resources/top/monthly">Monthly</a>
+          </nav>
         </div>
         <div className="flex items-center gap-2">
           {[5, 10, 25].map((n) => (

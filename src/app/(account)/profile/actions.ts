@@ -27,6 +27,14 @@ export async function updateProfile(
 ): Promise<ActionState> {
   const { sb, user } = await requireUser();
 
+  // Fetch existing username to revalidate old/new public pages
+  const { data: existingProfile } = await sb
+    .from('profiles')
+    .select('username')
+    .eq('id', user.id)
+    .single();
+  const oldUsername = existingProfile?.username as string | null | undefined;
+
   // Block edits if profile is soft-deleted
   const { data: me, error: meErr } = await sb
     .from('profiles')
@@ -37,33 +45,57 @@ export async function updateProfile(
   if (meErr) return { error: meErr.message };
   if (me?.is_deleted) redirect('/profile?error=deleted');
 
-  const display_name = String(formData.get('display_name') ?? '').trim();
-  const usernameRaw  = String(formData.get('username') ?? '').trim();
-  const avatarRaw    = String(formData.get('avatar_url') ?? '').trim();
+  const display_name_raw = String(formData.get('display_name') ?? '').trim();
+  const username_raw     = String(formData.get('username') ?? '').trim();
+  const avatar_raw       = String(formData.get('avatar_url') ?? '').trim();
 
+  // Basic required + length guard
+  const display_name = display_name_raw.slice(0, 80);
   if (!display_name) return { error: 'Display name is required.' };
 
-  const username   = usernameRaw === '' ? null : usernameRaw;
-  const avatar_url = avatarRaw   === '' ? null : avatarRaw;
-
-  const { error } = await sb
-    .from('profiles')
-    .update({
-      display_name,
-      username,
-      avatar_url,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', user.id);
-
-  if (error) {
-    if ((error.message || '').toLowerCase().includes('duplicate')) {
-      return { error: 'That username is already taken.' };
-    }
-    return { error: error.message };
+  // Username normalization: empty -> null, lowercase, pattern check
+  const username = username_raw === '' ? null : username_raw.toLowerCase();
+  if (username && !/^[a-z0-9_.]{3,20}$/.test(username)) {
+    return { error: 'Username must be 3–20 chars; lowercase letters, numbers, underscores or periods.' };
   }
 
+  // Avatar: empty -> null
+  const avatar_url = avatar_raw === '' ? null : avatar_raw;
+
+  try {
+    const { error } = await sb
+      .from('profiles')
+      .update({
+        display_name,
+        username,
+        avatar_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (error) {
+      // 23505 = unique_violation (e.g., username taken)
+      if ((error as any).code === '23505') {
+        return { error: 'That username is already taken.' };
+      }
+      return { error: error.message };
+    }
+  } catch (e: any) {
+    return { error: e?.message || 'Could not update your profile right now.' };
+  }
+
+  // Revalidate private profile page always
   revalidatePath('/profile');
+
+  // Revalidate public profile pages if username changed or set
+  const newUsername = username ?? null;
+  if (oldUsername && oldUsername !== newUsername) {
+    revalidatePath(`/u/${oldUsername}`);
+  }
+  if (newUsername) {
+    revalidatePath(`/u/${newUsername}`);
+  }
+
   redirect('/profile?updated=1');
 }
 

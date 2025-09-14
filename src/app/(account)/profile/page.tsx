@@ -1,7 +1,9 @@
-// app/(account)/profile/page.tsx
+'use client';
+
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
+import AccountNav from './_components/AccountNav';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +30,6 @@ type SaveRow = {
 type SubmissionRow = {
   id: string;
   created_at: string;
-  // slug/title on submissions may not exist pre-approval; keep generic
 };
 
 type ResourceLite = { id: string; slug: string; title: string };
@@ -49,7 +50,6 @@ function fmt(dt: string) {
 }
 
 export default async function ProfilePage() {
-  // createClientServer() returns a Promise in this codebase
   const sb = await createClientServer();
 
   const { data: auth, error: authErr } = await sb.auth.getUser();
@@ -80,6 +80,7 @@ export default async function ProfilePage() {
       .from('comments')
       .select('id, body, created_at, resource_id')
       .eq('user_id', userId)
+      .eq('is_deleted', false)
       .order('created_at', { ascending: false })
       .limit(10),
     sb
@@ -144,6 +145,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6 space-y-8">
+      <AccountNav />
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -265,8 +267,6 @@ export default async function ProfilePage() {
       {/* Focused lists (optional quick sections) */}
       <section>
         <h2 className="text-lg font-medium mb-3">Recent comments</h2>
-        {/* Keep the previous comments list for a dedicated view */}
-        {/* This section duplicates the comments slice for users who prefer a focused list */}
         {comments.length > 0 ? (
           <ul className="space-y-3">
             {comments.map((c: CommentRow) => {
