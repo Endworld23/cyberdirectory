@@ -5,10 +5,17 @@ import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
+import ResourceFilters from '@/components/filters/ResourceFilters'
 
 export const dynamic = 'force-dynamic'
 
-type SearchParams = { size?: string }
+type SearchParams = {
+  size?: string
+  q?: string
+  category?: string
+  tag?: string
+  sort?: string
+}
 
 export async function toggleSaveAction(formData: FormData) {
   'use server'
@@ -53,12 +60,35 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
   const sizeRaw = Number((searchParams?.size ?? '10').trim())
   const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 10
 
-  const { data, error } = await s
+  const qParam = (searchParams?.q ?? '').trim()
+  const sort = (searchParams?.sort ?? '').trim() || 'new'
+
+  let query = s
     .from('resource_trending')
     .select('*')
     .eq('is_approved', true)
-    .order('trending_score', { ascending: false })
-    .limit(size)
+
+  if (qParam) {
+    const like = qParam.replace(/%/g, '')
+    query = query.or(`title.ilike.%${like}%,description.ilike.%${like}%`)
+  }
+
+  // Sorting: default to newest; allow top/comments; fallback to trending_score if unknown
+  switch (sort) {
+    case 'top':
+      query = query.order('votes_count', { ascending: false, nullsFirst: false })
+      break
+    case 'comments':
+      query = query.order('comments_count', { ascending: false, nullsFirst: false })
+      break
+    case 'new':
+      query = query.order('created_at', { ascending: false })
+      break
+    default:
+      query = query.order('trending_score', { ascending: false })
+  }
+
+  const { data, error } = await query.limit(size)
 
   if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
 
@@ -97,13 +127,13 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
         <div>
           <h1 className="text-2xl font-semibold">All Resources</h1>
           <p className="text-sm text-gray-600">Browse the full directory of submitted resources.</p>
-        <nav className="mt-1 text-xs text-gray-600">
-          <span aria-current="page" className="mr-3 font-medium text-gray-900">All</span>
-          <a className="underline mr-3" href="/resources/trending">Trending</a>
-          <a className="underline mr-3" href="/resources/top">All‑time</a>
-          <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-          <a className="underline" href="/resources/top/monthly">Monthly</a>
-        </nav>
+          <nav className="mt-1 text-xs text-gray-600">
+            <span aria-current="page" className="mr-3 font-medium text-gray-900">All</span>
+            <a className="underline mr-3" href="/resources/trending">Trending</a>
+            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <a className="underline" href="/resources/top/monthly">Monthly</a>
+          </nav>
         </div>
         <div className="flex items-center gap-2">
           {[5, 10, 25].map((n) => (
@@ -121,6 +151,14 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
           ))}
         </div>
       </header>
+      <div className="mt-4">
+        <ResourceFilters
+          initialQ={searchParams?.q as string | undefined}
+          initialCategory={searchParams?.category as string | undefined}
+          initialTag={searchParams?.tag as string | undefined}
+          initialSort={(searchParams?.sort as string | undefined) || 'new'}
+        />
+      </div>
 
       {rows.length === 0 ? (
         <EmptyState
