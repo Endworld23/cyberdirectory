@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
+import EmptyState from '@/components/EmptyState'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,8 +72,24 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
       <main className="mx-auto max-w-5xl p-6">
         <header className="mb-4">
           <h1 className="text-2xl font-semibold">Top — This Month</h1>
-          <p className="text-sm text-gray-600">No votes recorded in the last 30 days.</p>
+          <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
+          <nav className="mt-1 text-xs text-gray-600">
+            <a className="underline mr-3" href="/resources/trending">Trending</a>
+            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
+          </nav>
         </header>
+        <EmptyState
+          title="No monthly top yet"
+          message="When resources receive votes this month, they'll appear here."
+          primaryAction={
+            <a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</a>
+          }
+          secondaryActions={
+            <a href="/resources/top" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View all‑time</a>
+          }
+        />
       </main>
     )
   }
@@ -122,6 +139,12 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
         <div>
           <h1 className="text-2xl font-semibold">Top — This Month</h1>
           <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
+          <nav className="mt-1 text-xs text-gray-600">
+            <a className="underline mr-3" href="/resources/trending">Trending</a>
+            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
+          </nav>
         </div>
         <div className="flex items-center gap-2">
           {[5, 10, 25].map((n) => (

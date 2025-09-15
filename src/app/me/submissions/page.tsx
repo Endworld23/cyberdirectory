@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
+import EmptyState from '@/components/EmptyState'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ export default async function MySubmissionsPage() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-4xl p-6">
+      <main className="mx-auto max-w-5xl p-6">
         <h1 className="text-2xl font-semibold">My submissions</h1>
         <p className="mt-4 text-red-600">Failed to load: {error.message}</p>
       </main>
@@ -44,19 +45,22 @@ export default async function MySubmissionsPage() {
   const rows = (data ?? []) as Submission[]
 
   return (
-    <main className="mx-auto max-w-4xl p-6 space-y-6">
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
       <header className="flex items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">My submissions</h1>
           <p className="text-sm text-gray-600">Track pending, approved, and rejected submissions.</p>
         </div>
-        <Link href="/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
+        <Link href="/resources/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
       </header>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-          You haven’t submitted anything yet.
-        </div>
+        <EmptyState
+          title="No submissions yet"
+          message="Submit your first resource to start tracking reviews here."
+          primaryAction={<a href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</a>}
+          secondaryActions={<a href="/resources" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Browse directory</a>}
+        />
       ) : (
         <ul className="space-y-3">
           {rows.map((r) => (

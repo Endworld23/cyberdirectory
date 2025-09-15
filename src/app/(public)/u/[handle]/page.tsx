@@ -1,198 +1,170 @@
-import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
-import { createClientServer } from '@/lib/supabase-server';
+import Image from 'next/image'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { createClientServer } from '@/lib/supabase-server'
+import EmptyState from '@/components/EmptyState'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
 
 // ---------------------------------------------
 // Helpers
 // ---------------------------------------------
 function fmtDate(dt?: string | null) {
-  if (!dt) return '';
-  try { return new Date(dt).toLocaleString(); } catch { return String(dt); }
+  if (!dt) return ''
+  try { return new Date(dt).toLocaleString() } catch { return String(dt) }
 }
 
-// ---------------------------------------------
-// Server actions (SSR-friendly, RLS-respecting)
-// ---------------------------------------------
-export async function toggleSaveAction(formData: FormData) {
-  'use server';
-  const s = await createClientServer();
-  const { data: auth } = await s.auth.getUser();
-  const user = auth?.user; if (!user) return redirect('/login');
-
-  const resourceId = String(formData.get('resourceId') ?? '');
-  const slug = String(formData.get('slug') ?? '');
-  const saved = String(formData.get('saved') ?? '') === 'true';
-  if (!resourceId || !slug) return;
-
-  if (saved) {
-    await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId);
-  } else {
-    // idempotent thanks to (user_id, resource_id) unique constraint in our SQL
-    await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' });
-  }
-  revalidatePath(`/resources/${slug}`);
+type Profile = {
+  id: string
+  handle: string
+  display_name: string | null
+  bio: string | null
+  avatar_url: string | null
+  created_at: string | null
 }
 
-export async function voteAction(formData: FormData) {
-  'use server';
-  const s = await createClientServer();
-  const { data: auth } = await s.auth.getUser();
-  const user = auth?.user; if (!user) return redirect('/login');
-
-  const resourceId = String(formData.get('resourceId') ?? '');
-  const slug = String(formData.get('slug') ?? '');
-  const hasVoted = String(formData.get('hasVoted') ?? '') === 'true';
-  if (!resourceId || !slug) return;
-
-  if (hasVoted) {
-    await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId);
-  } else {
-    await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' });
-  }
-  revalidatePath(`/resources/${slug}`);
-}
-
-export async function postCommentAction(formData: FormData) {
-  'use server';
-  const s = await createClientServer();
-  const { data: auth } = await s.auth.getUser();
-  const user = auth?.user; if (!user) return redirect('/login');
-
-  const resourceId = String(formData.get('resourceId') ?? '');
-  const slug = String(formData.get('slug') ?? '');
-  const bodyRaw = String(formData.get('body') ?? '').trim();
-  if (!resourceId || !slug) return;
-  if (!bodyRaw) return;
-
-  await s.from('comments').insert({ user_id: user.id, resource_id: resourceId, body: bodyRaw });
-  revalidatePath(`/resources/${slug}`);
-}
+// Activity item union for rendering a single list
+type ActivityItem =
+  | { kind: 'submission'; id: string; created_at: string; resource_id: string; slug: string; title: string; logo_url?: string | null }
+  | { kind: 'comment'; id: string; created_at: string; resource_id: string; slug: string; title: string; body: string; logo_url?: string | null }
+  | { kind: 'vote'; id: string; created_at: string; resource_id: string; slug: string; title: string; logo_url?: string | null }
 
 // ---------------------------------------------
 // Page
 // ---------------------------------------------
-export default async function ResourcePage({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
-  const s = await createClientServer();
+export default async function PublicProfilePage({ params }: { params: { handle: string } }) {
+  const handle = params.handle
+  const s = await createClientServer()
 
-  // 1) Load resource by slug (conservative column list)
-  const { data: resource, error: rErr } = await s
-    .from('resources')
-    .select('id, slug, title, description, url, created_at')
-    .ilike('slug', slug)
-    .maybeSingle();
+  // 1) Load profile by handle
+  const { data: profile, error: pErr } = await s
+    .from('profiles')
+    .select('id, handle, display_name, bio, avatar_url, created_at')
+    .ilike('handle', handle)
+    .maybeSingle()
 
-  if (rErr) throw new Error(rErr.message);
-  if (!resource) return notFound();
+  if (pErr) throw new Error(pErr.message)
+  if (!profile) return notFound()
 
-  // 2) Load current user (to compute own save/vote)
-  const { data: auth } = await s.auth.getUser();
-  const user = auth?.user ?? null;
-
-  // 3) Parallel queries for counts and user state
-  const [votesQ, savesQ, myVoteQ, mySaveQ, commentsQ] = await Promise.all([
-    s.from('votes').select('*', { count: 'exact', head: true }).eq('resource_id', resource.id),
-    s.from('saves').select('*', { count: 'exact', head: true }).eq('resource_id', resource.id),
-    user ? s.from('votes').select('id').eq('user_id', user.id).eq('resource_id', resource.id).limit(1) : Promise.resolve({ data: null, error: null }),
-    user ? s.from('saves').select('id').eq('user_id', user.id).eq('resource_id', resource.id).limit(1) : Promise.resolve({ data: null, error: null }),
+  // 2) Parallel read-only queries for stats and activity
+  const [submissionsQ, commentsQ, votesQ] = await Promise.all([
+    s
+      .from('resources')
+      .select('id, slug, title, logo_url, created_at')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(10),
     s
       .from('comments')
-      .select('id, body, created_at, user_id')
-      .eq('resource_id', resource.id)
-      .eq('is_deleted', false)
+      .select('id, resource_id, body, created_at, resources!inner(slug, title, logo_url)')
+      .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
-      .limit(20),
-  ] as const);
+      .limit(10),
+    s
+      .from('votes')
+      .select('id, resource_id, created_at, resources!inner(slug, title, logo_url)')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ] as const)
 
-  const votesCount = votesQ.count ?? 0;
-  const savesCount = savesQ.count ?? 0;
-  const hasVoted = Array.isArray((myVoteQ as any).data) && (myVoteQ as any).data.length > 0;
-  const hasSaved = Array.isArray((mySaveQ as any).data) && (mySaveQ as any).data.length > 0;
-  const comments = (commentsQ.data ?? []) as { id: string; body: string; created_at: string; user_id: string }[];
+  // 3) Compute simple counts (safe fallbacks if RLS hides some rows)
+  const submissionsCount = submissionsQ?.data?.length ?? 0
+  const commentsCount = commentsQ?.data?.length ?? 0
+  const votesCount = votesQ?.data?.length ?? 0
+
+  // 4) Merge activity items (up to 20 newest)
+  const activity: ActivityItem[] = []
+  for (const r of submissionsQ.data ?? []) {
+    activity.push({ kind: 'submission', id: r.id, created_at: r.created_at!, resource_id: r.id, slug: r.slug, title: r.title, logo_url: (r as any).logo_url })
+  }
+  for (const c of commentsQ.data ?? []) {
+    const res = (c as any).resources || {}
+    activity.push({ kind: 'comment', id: c.id, created_at: c.created_at!, resource_id: c.resource_id, slug: res.slug, title: res.title, body: (c as any).body, logo_url: res.logo_url })
+  }
+  for (const v of votesQ.data ?? []) {
+    const res = (v as any).resources || {}
+    activity.push({ kind: 'vote', id: v.id, created_at: v.created_at!, resource_id: v.resource_id, slug: res.slug, title: res.title, logo_url: res.logo_url })
+  }
+  activity.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
+  const recent = activity.slice(0, 20)
+
+  // 5) Favicon fallback
+  const avatar = profile.avatar_url
 
   return (
-    <main className="mx-auto max-w-5xl p-6 space-y-8">
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
       {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{resource.title}</h1>
-          {resource.url && (
-            <p className="mt-1 text-sm text-gray-600">
-              <a href={resource.url} target="_blank" rel="noopener" className="underline">{resource.url}</a>
-            </p>
-          )}
-          <p className="mt-2 text-gray-700 whitespace-pre-line">{resource.description}</p>
-          <p className="mt-2 text-xs text-gray-500">Added {fmtDate(resource.created_at)}</p>
+      <header className="flex items-start gap-4">
+        {avatar ? (
+          <Image src={avatar} alt="" width={64} height={64} className="h-16 w-16 rounded-full object-cover" />
+        ) : (
+          <div className="h-16 w-16 rounded-full bg-gray-200" />
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-2xl font-semibold">{profile.display_name || `@${profile.handle}`}</h1>
+          <div className="mt-1 text-sm text-gray-600">@{profile.handle}</div>
+          {profile.bio && <p className="mt-2 whitespace-pre-wrap text-gray-800">{profile.bio}</p>}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+            <span className="rounded-full border px-2 py-0.5">Joined {fmtDate(profile.created_at)}</span>
+            <span className="rounded-full border px-2 py-0.5">Submissions: {submissionsCount}</span>
+            <span className="rounded-full border px-2 py-0.5">Comments: {commentsCount}</span>
+            <span className="rounded-full border px-2 py-0.5">Votes: {votesCount}</span>
+          </div>
         </div>
-        <aside className="flex gap-3">
-          {/* Vote */}
-          <form action={voteAction} className="inline-flex">
-            <input type="hidden" name="resourceId" value={resource.id} />
-            <input type="hidden" name="slug" value={resource.slug} />
-            <input type="hidden" name="hasVoted" value={String(hasVoted)} />
-            <button
-              className={
-                'rounded-md border px-3 py-1.5 text-sm ' +
-                (hasVoted ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
-              }
-              title={hasVoted ? 'Remove vote' : 'Vote for this resource'}
-            >
-              ▲ Vote ({votesCount})
-            </button>
-          </form>
-
-          {/* Save */}
-          <form action={toggleSaveAction} className="inline-flex">
-            <input type="hidden" name="resourceId" value={resource.id} />
-            <input type="hidden" name="slug" value={resource.slug} />
-            <input type="hidden" name="saved" value={String(hasSaved)} />
-            <button
-              className={
-                'rounded-md border px-3 py-1.5 text-sm ' +
-                (hasSaved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
-              }
-              title={hasSaved ? 'Remove from saves' : 'Save this resource'}
-            >
-              ☆ Save ({savesCount})
-            </button>
-          </form>
-        </aside>
       </header>
 
-      {/* Comments */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-medium">Comments</h2>
-          <Link href="/profile" className="text-sm underline">Your profile</Link>
-        </div>
+      {/* Tabs nav (placeholder for future sections) */}
+      <nav className="text-xs text-gray-600">
+        <span aria-current="page" className="mr-3 font-medium text-gray-900">Overview</span>
+        <Link className="underline mr-3" href={`/me/saves`}>Your saves</Link>
+        <Link className="underline" href={`/resources/submit`}>Submit</Link>
+      </nav>
 
-        {comments.length === 0 ? (
-          <p className="text-gray-600">No comments yet.</p>
+      {/* Recent activity */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Recent activity</h2>
+        {recent.length === 0 ? (
+          <EmptyState
+            title="No public activity"
+            message="Submissions, votes, and comments will appear here."
+            primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</a>}
+          />
         ) : (
           <ul className="space-y-3">
-            {comments.map((c) => (
-              <li key={c.id} className="rounded-lg border p-3">
-                <div className="text-sm text-gray-500">{fmtDate(c.created_at)}</div>
-                <p className="mt-1 whitespace-pre-line">{c.body}</p>
+            {recent.map((item) => (
+              <li key={`${item.kind}-${item.id}`} className="rounded-2xl border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-gray-500">{fmtDate(item.created_at)}</div>
+                    {item.kind === 'submission' && (
+                      <div className="mt-1">
+                        <Link href={`/resources/${item.slug}`} className="font-medium hover:underline">Submitted: {item.title}</Link>
+                      </div>
+                    )}
+                    {item.kind === 'comment' && (
+                      <div className="mt-1">
+                        <Link href={`/resources/${item.slug}`} className="font-medium hover:underline">Commented on: {item.title}</Link>
+                        <p className="mt-1 line-clamp-3 text-sm text-gray-800">{(item as any).body}</p>
+                      </div>
+                    )}
+                    {item.kind === 'vote' && (
+                      <div className="mt-1">
+                        <Link href={`/resources/${item.slug}`} className="font-medium hover:underline">Voted on: {item.title}</Link>
+                      </div>
+                    )}
+                  </div>
+                  {item.logo_url ? (
+                    <Image src={item.logo_url} alt="" width={32} height={32} className="h-8 w-8 object-contain" />
+                  ) : (
+                    <div className="h-8 w-8 rounded bg-gray-100" />
+                  )}
+                </div>
               </li>
             ))}
           </ul>
         )}
-
-        {/* Add comment (requires auth via RLS; will redirect if not) */}
-        <form action={postCommentAction} className="mt-4 space-y-2">
-          <input type="hidden" name="resourceId" value={resource.id} />
-          <input type="hidden" name="slug" value={resource.slug} />
-          <label className="block text-sm font-medium">Add a comment</label>
-          <textarea name="body" rows={4} required className="w-full rounded-md border p-2" placeholder="Share your thoughts…"></textarea>
-          <div>
-            <button className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50">Post comment</button>
-          </div>
-        </form>
       </section>
     </main>
-  );
+  )
 }

@@ -8,8 +8,10 @@ import VoteWidget from '@/components/VoteWidget'
 import SaveButton from '@/components/SaveButton'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
+import Comments from '@/components/resources/Comments'
+import RelatedGrid from '@/components/resources/RelatedGrid'
+import CopyButton from '@/components/CopyButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +25,7 @@ type ResourceRow = {
   pricing: 'unknown' | 'free' | 'freemium' | 'trial' | 'paid' | null
   is_approved: boolean
   category_id: string | null
+  created_at: string | null
 }
 
 type TagRow = { id: string; slug: string; name: string }
@@ -115,7 +118,7 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
   // Load resource
   const { data: r, error } = await s
     .from('resources')
-    .select('id, slug, title, description, url, logo_url, pricing, is_approved, category_id')
+    .select('id, slug, title, description, url, logo_url, pricing, is_approved, category_id, created_at')
     .eq('slug', slug)
     .eq('is_approved', true)
     .single<ResourceRow>()
@@ -212,12 +215,18 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
     about: tags.length ? tags.map(t => t.name) : undefined,
   }
 
+  let faviconUrl: string | null = null
+  try {
+    const host = new URL(r.url).hostname
+    faviconUrl = `https://www.google.com/s2/favicons?domain=${host}&sz=64`
+  } catch {}
+
   return (
-    <main className="mx-auto max-w-3xl space-y-8 p-6">
+    <main className="mx-auto max-w-5xl space-y-8 p-6">
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-3">
-            {r.logo_url && (
+            {r.logo_url ? (
               <Image
                 src={r.logo_url}
                 alt={`${r.title} logo`}
@@ -225,7 +234,15 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
                 height={48}
                 className="h-12 w-12 object-contain"
               />
-            )}
+            ) : faviconUrl ? (
+              <Image
+                src={faviconUrl}
+                alt="Site icon"
+                width={48}
+                height={48}
+                className="h-12 w-12 rounded"
+              />
+            ) : null}
             <h1 className="text-2xl font-bold truncate">{r.title}</h1>
           </div>
 
@@ -251,12 +268,17 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
                 #{t.name}
               </Link>
             ))}
+            {r.created_at && (
+              <span className="rounded-full border px-2 py-0.5 text-xs text-gray-600">
+                Added {new Date(r.created_at).toLocaleDateString()}
+              </span>
+            )}
           </div>
 
-          {r.description && <p className="text-gray-700">{r.description}</p>}
+          {r.description && <p className="text-gray-700 line-clamp-6">{r.description}</p>}
 
           <div className="flex items-center gap-2">
-            <a href={`/go/${r.id}`} className="inline-block rounded-md bg-black px-4 py-2 text-white">
+            <a href={`/go/${r.id}`} rel="noreferrer" className="inline-block rounded-md bg-black px-4 py-2 text-white">
               Visit Site
             </a>
             <SaveButton resourceId={r.id} initialSaved={initialSaved} />
@@ -269,103 +291,47 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
 
       {/* Share row */}
       <section className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-gray-600">Share:</span>
+        <span className="text-gray-600" aria-hidden>Share:</span>
         <a href={share.twitter} target="_blank" rel="noreferrer" className="underline text-blue-600">Twitter</a>
         <a href={share.linkedin} target="_blank" rel="noreferrer" className="underline text-blue-600">LinkedIn</a>
-        <a href={share.email} className="underline text-blue-600">Email</a>
-        <div className="ml-auto w-full sm:w-auto">
+        <a href={share.email} rel="noreferrer" className="underline text-blue-600">Email</a>
+        <a href="#comments" className="underline text-gray-700">Jump to comments</a>
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
           <input
             readOnly
             value={shareUrl}
-            className="w-full rounded border px-2 py-1 text-xs text-gray-700"
+            className="w-full rounded border px-2 py-1 text-xs text-gray-700 sm:w-72"
             onFocus={(e) => e.currentTarget.select()}
           />
+          <CopyButton text={shareUrl} title="Copy link" />
         </div>
       </section>
 
-      {/* Comments */}
-      <section>
-        <h2 className="mb-2 text-lg font-medium">Comments</h2>
-        {/* Add Comment form */}
-        <form action={createCommentAction} className="rounded-2xl border p-4">
-          <input type="hidden" name="resourceId" value={r.id} />
-          <input type="hidden" name="slug" value={r.slug} />
-          <label htmlFor="comment-body" className="block text-sm font-medium">Add a comment</label>
-          <textarea
-            id="comment-body"
-            name="body"
-            required
-            minLength={2}
-            rows={3}
-            placeholder="Share your thoughts…"
-            className="mt-1 w-full rounded-xl border px-3 py-2"
-          />
-          <div className="mt-2 flex justify-end">
-            <PendingButton className="rounded-xl bg-black px-4 py-2 text-white" pendingText="Posting…">
-              Post comment
-            </PendingButton>
-          </div>
-        </form>
+      <div id="comments" />
 
-        {/* List */}
-        {(!comments || comments.length === 0) ? (
-          <div className="mt-4">
-            <EmptyState
-              title="No comments yet"
-              message="Be the first to start the discussion."
-              primaryAction={
-                <a href="#comment-body" className="rounded-xl bg-black px-3 py-1.5 text-white">Add comment</a>
-              }
-            />
-          </div>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {comments.map((c) => (
-              <li key={c.id} className="rounded-2xl border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="whitespace-pre-wrap text-sm text-gray-900">{c.body}</p>
-                    <div className="mt-1 text-[11px] text-gray-500">
-                      <time dateTime={c.created_at}>{new Date(c.created_at as any).toLocaleString()}</time>
-                    </div>
-                  </div>
-                  {/* Delete-own control; server will enforce ownership via RLS or filter */}
-                  <form action={deleteOwnCommentAction}>
-                    <input type="hidden" name="commentId" value={c.id} />
-                    <input type="hidden" name="slug" value={r.slug} />
-                    <PendingButton className="rounded border px-2 py-1 text-xs" pendingText="Removing…">Delete</PendingButton>
-                  </form>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* Comments */}
+      <Comments
+        resourceId={r.id}
+        slug={r.slug}
+        comments={comments ?? []}
+        createAction={createCommentAction}
+        deleteAction={deleteOwnCommentAction}
+      />
 
       {/* Related */}
-      {related.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Related resources</h2>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {related.map(x => (
-              <li key={x.id} className="rounded-2xl border p-3">
-                <div className="flex items-center gap-3">
-                  {x.logo_url ? (
-                    <Image src={x.logo_url} alt={`${x.title} logo`} width={32} height={32} className="h-8 w-8 object-contain" />
-                  ) : (
-                    <div className="h-8 w-8 rounded bg-gray-100" />
-                  )}
-                  <Link href={`/resources/${x.slug}`} className="font-medium hover:underline truncate">
-                    {x.title}
-                  </Link>
-                </div>
-                {x.description && <p className="mt-2 text-xs text-gray-700 line-clamp-2">{x.description}</p>}
-                <div className="mt-2 text-[11px] text-gray-500">Pricing: {x.pricing ?? 'unknown'}</div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <RelatedGrid
+        items={related as any}
+        renderActions={(x) => (
+          <a
+            href={`/go/${x.id}`}
+            rel="noreferrer"
+            className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
+            title="Visit site"
+          >
+            Visit
+          </a>
+        )}
+      />
 
       {/* JSON-LD */}
       <script

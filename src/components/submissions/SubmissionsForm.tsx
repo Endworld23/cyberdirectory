@@ -4,6 +4,8 @@ import * as React from 'react'
 import PendingButton from '@/components/PendingButton'
 import { submitResourceAction, fetchUrlMetadataAction, uploadLogoAction } from '@/app/resources/submit/actions'
 import { useRouter } from 'next/navigation'
+import { submissionSchema } from '@/lib/validation/submission'
+import { toSlug } from '@/lib/slug'
 
 export type SimpleOption = { id: string; name: string; slug: string }
 
@@ -26,6 +28,10 @@ export default function SubmissionForm({
   const [logoUrl, setLogoUrl] = React.useState<string>('')
   const [contactEmail, setContactEmail] = React.useState<string>(userEmail || '')
 
+  // validation
+  const [errors, setErrors] = React.useState<Record<string, string>>({})
+  const derivedSlug = React.useMemo(() => (title ? toSlug(title) : ''), [title])
+
   const [metaLoading, setMetaLoading] = React.useState(false)
   const [metaError, setMetaError] = React.useState<string | null>(null)
 
@@ -33,6 +39,30 @@ export default function SubmissionForm({
   const [uploadError, setUploadError] = React.useState<string | null>(null)
 
   const [serverErrors, setServerErrors] = React.useState<Record<string, string> | null>(null)
+
+  React.useEffect(() => {
+    const data = {
+      url,
+      title,
+      description,
+      category_id: categoryId || undefined,
+      pricing,
+      tags: tagSlugs,
+      logo_url: logoUrl || undefined,
+      contact_email: contactEmail || undefined,
+    }
+    const v = submissionSchema.safeParse(data)
+    if (!v.success) {
+      const map: Record<string, string> = {}
+      for (const issue of v.error.issues) {
+        const key = (issue.path?.[0] as string) || '_root'
+        if (!map[key]) map[key] = issue.message
+      }
+      setErrors(map)
+    } else {
+      setErrors({})
+    }
+  }, [url, title, description, categoryId, pricing, tagSlugs, logoUrl, contactEmail])
 
   async function handleFetchMeta() {
     setMetaError(null)
@@ -95,6 +125,11 @@ export default function SubmissionForm({
     router.push('/resources/submit/success')
   }
 
+  const inputClass = (hasError?: boolean) =>
+    `mt-1 w-full rounded-xl border px-3 py-2 ${hasError ? 'border-red-500 focus:outline-red-600' : ''}`
+
+  const hasErrors = Object.keys(errors).length > 0
+
   return (
     <form
       ref={formRef}
@@ -108,6 +143,7 @@ export default function SubmissionForm({
         if (logoUrl) fd.set('logo_url', logoUrl)
         if (contactEmail) fd.set('contact_email', contactEmail)
         if (tagSlugs.length) fd.set('tags', tagSlugs.join(','))
+        fd.set('slug', derivedSlug)
         return clientSubmit(fd)
       }}
       className="space-y-6"
@@ -122,7 +158,7 @@ export default function SubmissionForm({
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
             required
-            className="w-full rounded-xl border px-3 py-2"
+            className={inputClass(!!errors.url)}
           />
           <button
             type="button"
@@ -134,6 +170,7 @@ export default function SubmissionForm({
           </button>
         </div>
         {metaError && <p className="mt-1 text-xs text-red-600">{metaError}</p>}
+        {errors.url && <p className="mt-1 text-xs text-red-600">{errors.url}</p>}
       </div>
 
       {/* Title */}
@@ -145,8 +182,12 @@ export default function SubmissionForm({
           onChange={(e) => setTitle(e.target.value)}
           required
           minLength={3}
-          className="mt-1 w-full rounded-xl border px-3 py-2"
+          className={inputClass(!!errors.title)}
         />
+        {derivedSlug && (
+          <p className="mt-1 text-xs text-gray-500">Slug preview: <code>{derivedSlug}</code></p>
+        )}
+        {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
       </div>
 
       {/* Description */}
@@ -156,8 +197,9 @@ export default function SubmissionForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={4}
-          className="mt-1 w-full rounded-xl border px-3 py-2"
+          className={inputClass(!!errors.description)}
         />
+        {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description}</p>}
       </div>
 
       {/* Category & Pricing */}
@@ -167,7 +209,7 @@ export default function SubmissionForm({
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="mt-1 w-full rounded-xl border px-3 py-2"
+            className={inputClass(!!errors.category_id)}
           >
             <option value="">Select…</option>
             {categories.map((c) => (
@@ -176,6 +218,7 @@ export default function SubmissionForm({
               </option>
             ))}
           </select>
+          {errors.category_id && <p className="mt-1 text-xs text-red-600">{errors.category_id}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium">Pricing</label>
@@ -201,11 +244,12 @@ export default function SubmissionForm({
           placeholder="comma-separated, e.g. web, awareness"
           defaultValue={''}
           onChange={(e) => onTagsInputChange(e.target.value)}
-          className="mt-1 w-full rounded-xl border px-3 py-2"
+          className={inputClass(!!errors.tags)}
         />
         {tags?.length ? (
           <p className="mt-1 text-xs text-gray-500">Suggestions: {tags.slice(0, 10).map((t) => t.slug).join(', ')}…</p>
         ) : null}
+        {errors.tags && <p className="mt-1 text-xs text-red-600">{errors.tags}</p>}
       </div>
 
       {/* Logo uploader */}
@@ -230,6 +274,7 @@ export default function SubmissionForm({
             <code className="text-xs text-gray-600 break-all">{logoUrl}</code>
           </div>
         )}
+        {errors.logo_url && <p className="mt-1 text-xs text-red-600">{errors.logo_url}</p>}
         {/* Keep a hidden input so the server action receives the current logo url */}
         <input type="hidden" name="logo_url" value={logoUrl} readOnly />
       </div>
@@ -242,8 +287,9 @@ export default function SubmissionForm({
           value={contactEmail}
           onChange={(e) => setContactEmail(e.target.value)}
           placeholder="name@example.com"
-          className="mt-1 w-full rounded-xl border px-3 py-2"
+          className={inputClass(!!errors.contact_email)}
         />
+        {errors.contact_email && <p className="mt-1 text-xs text-red-600">{errors.contact_email}</p>}
       </div>
 
       {/* Server-side field errors */}
@@ -268,10 +314,16 @@ export default function SubmissionForm({
       <input type="hidden" name="category_id" value={categoryId} readOnly />
       <input type="hidden" name="tags" value={tagSlugs.join(',')} readOnly />
       <input type="hidden" name="contact_email" value={contactEmail} readOnly />
+      <input type="hidden" name="slug" value={derivedSlug} readOnly />
 
       {/* Submit */}
       <div className="flex items-center gap-3">
-        <PendingButton className="rounded-xl bg-black px-4 py-2 text-white" pendingText="Submitting…" title="Submit resource">
+        <PendingButton
+          className="rounded-xl bg-black px-4 py-2 text-white"
+          pendingText="Submitting…"
+          title="Submit resource"
+          disabled={hasErrors || uploading || metaLoading}
+        >
           Submit
         </PendingButton>
         <span className="text-xs text-gray-600">Submissions are reviewed before publishing.</span>

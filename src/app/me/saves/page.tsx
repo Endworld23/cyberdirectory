@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import SaveButton from '@/components/SaveButton'
 import { revalidatePath } from 'next/cache'
+import EmptyState from '@/components/EmptyState'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,11 +88,14 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
 
   if (resourceIds.length === 0) {
     return (
-      <main className="mx-auto max-w-5xl p-6 space-y-6">
+      <main className="mx-auto max-5xl p-6 space-y-6">
         <Header total={0} q={q} sort={sort} />
-        <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-          You haven’t saved any resources yet. Browse the <Link href="/" className="underline">directory</Link> and tap the save button to see items here.
-        </div>
+        <EmptyState
+          title="No saved resources yet"
+          message="Browse the directory and tap the save button to add items here."
+          primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</a>}
+          secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+        />
       </main>
     );
   }
@@ -139,7 +143,15 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
     <main className="mx-auto max-w-5xl p-6">
       <Header total={total} q={q} sort={sort} />
 
-      {rows.length === 0 && <p className="text-sm text-gray-600 mt-4">No matches.</p>}
+      {rows.length === 0 && (
+        <div className="mt-6">
+          <EmptyState
+            title="No matches"
+            message="Try a different search term or sort."
+            primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Clear filters</a>}
+          />
+        </div>
+      )}
 
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((r) => (

@@ -1,9 +1,10 @@
-// src/app/resources/trending/page.tsx
+// src/app/resources/top/page.tsx
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
+import EmptyState from '@/components/EmptyState'
 
 export const dynamic = 'force-dynamic'
 
@@ -93,7 +94,8 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
           <h1 className="text-2xl font-semibold">Top — All Time</h1>
           <p className="text-sm text-gray-600">Most voted resources overall.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/trending">Trending</a>
+            <span aria-current="page" className="mr-3 font-medium text-gray-900">All‑time</span>
             <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
             <a className="underline" href="/resources/top/monthly">Monthly</a>
           </nav>
@@ -115,57 +117,71 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
         </div>
       </header>
 
-      <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((r) => {
-          const hasVoted = votedIds.has(r.id)
-          const hasSaved = savedIds.has(r.id)
-          return (
-            <ResourceCard
-              key={r.id}
-              id={r.id}
-              slug={r.slug}
-              title={r.title}
-              description={r.description ?? undefined}
-              url={r.url ?? undefined}
-              logo_url={r.logo_url ?? undefined}
-              created_at={r.created_at ?? undefined}
-              stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
-              actions={
-                <div className="flex items-center gap-2">
-                  <form action={voteAction}>
-                    <input type="hidden" name="resourceId" value={r.id} />
-                    <input type="hidden" name="hasVoted" value={String(hasVoted)} />
-                    <PendingButton
-                      className={
-                        'rounded-md border px-2 py-1 text-xs ' +
-                        (hasVoted ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
-                      }
-                      pendingText={hasVoted ? 'Removing…' : 'Voting…'}
-                      title={hasVoted ? 'Remove vote' : 'Vote for this resource'}
-                    >
-                      ▲ {hasVoted ? 'Voted' : 'Vote'}
-                    </PendingButton>
-                  </form>
-                  <form action={toggleSaveAction}>
-                    <input type="hidden" name="resourceId" value={r.id} />
-                    <input type="hidden" name="saved" value={String(hasSaved)} />
-                    <PendingButton
-                      className={
-                        'rounded-md border px-2 py-1 text-xs ' +
-                        (hasSaved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
-                      }
-                      pendingText={hasSaved ? 'Removing…' : 'Saving…'}
-                      title={hasSaved ? 'Remove from saves' : 'Save this resource'}
-                    >
-                      ☆ {hasSaved ? 'Saved' : 'Save'}
-                    </PendingButton>
-                  </form>
-                </div>
-              }
-            />
-          )
-        })}
-      </ul>
+      {rows.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            title="No top resources yet"
+            message="Approved resources will appear here once they receive votes."
+            primaryAction={
+              <a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">
+                View trending
+              </a>
+            }
+          />
+        </div>
+      ) : (
+        <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {rows.map((r) => {
+            const hasVoted = votedIds.has(r.id)
+            const hasSaved = savedIds.has(r.id)
+            return (
+              <ResourceCard
+                key={r.id}
+                id={r.id}
+                slug={r.slug}
+                title={r.title}
+                description={r.description ?? undefined}
+                url={r.url ?? undefined}
+                logo_url={r.logo_url ?? undefined}
+                created_at={r.created_at ?? undefined}
+                stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
+                actions={
+                  <div className="flex items-center gap-2">
+                    <form action={voteAction}>
+                      <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="hasVoted" value={String(hasVoted)} />
+                      <PendingButton
+                        className={
+                          'rounded-md border px-2 py-1 text-xs ' +
+                          (hasVoted ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
+                        }
+                        pendingText={hasVoted ? 'Removing…' : 'Voting…'}
+                        title={hasVoted ? 'Remove vote' : 'Vote for this resource'}
+                      >
+                        ▲ {hasVoted ? 'Voted' : 'Vote'}
+                      </PendingButton>
+                    </form>
+                    <form action={toggleSaveAction}>
+                      <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="saved" value={String(hasSaved)} />
+                      <PendingButton
+                        className={
+                          'rounded-md border px-2 py-1 text-xs ' +
+                          (hasSaved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
+                        }
+                        pendingText={hasSaved ? 'Removing…' : 'Saving…'}
+                        title={hasSaved ? 'Remove from saves' : 'Save this resource'}
+                      >
+                        ☆ {hasSaved ? 'Saved' : 'Save'}
+                      </PendingButton>
+                    </form>
+                  </div>
+                }
+              />
+            )
+          })}
+        </ul>
+      )}
     </main>
   )
 }
