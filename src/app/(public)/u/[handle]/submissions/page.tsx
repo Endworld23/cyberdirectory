@@ -1,13 +1,27 @@
-
-
 import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import EmptyState from '@/components/EmptyState'
 import { ResourceCard } from '@/components/ResourceCard'
 import { createClientServer } from '@/lib/supabase-server'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: { params: { handle: string } }): Promise<Metadata> {
+  const handle = params.handle
+  const title = `@${handle} — Submissions — Cyber Directory`
+  const description = `Latest resources submitted by @${handle}.`
+  const canonical = `/u/${handle}/submissions`
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'profile' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 // ---------------------------------------------
 // Types
@@ -49,16 +63,18 @@ export default async function PublicProfileSubmissionsPage({ params }: { params:
   if (pErr) throw new Error(pErr.message)
   if (!profile) return notFound()
 
-  // 2) Load submissions for this user (newest first)
-  const { data: rows, error: rErr } = await s
+  // 2) Load submissions for this user (newest first) with exact count
+  const PAGE_SIZE = 24
+  const { data: rows, error: rErr, count } = await s
     .from('resources')
-    .select('id, slug, title, description, url, logo_url, created_at, votes_count, comments_count')
+    .select('id, slug, title, description, url, logo_url, created_at, votes_count, comments_count', { count: 'exact' })
     .eq('user_id', profile.id)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .range(0, PAGE_SIZE - 1)
 
   if (rErr) throw new Error(rErr.message)
   const list: ResourceRow[] = rows ?? []
+  const total = count ?? 0
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-6">
@@ -77,6 +93,7 @@ export default async function PublicProfileSubmissionsPage({ params }: { params:
           <Link href="/resources/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white hover:bg-gray-900">Submit a resource</Link>
         </div>
       </header>
+      <div className="text-sm text-gray-600">Total submissions: {total}</div>
 
       {/* Tabs */}
       <nav className="text-xs text-gray-600">
@@ -120,6 +137,28 @@ export default async function PublicProfileSubmissionsPage({ params }: { params:
           ))}
         </ul>
       )}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: `@${profile.handle} — Submissions`,
+            url: `${site}/u/${profile.handle}/submissions`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: list.length,
+              itemListElement: list.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${site}/resources/${r.slug}`,
+                name: r.title,
+              })),
+            },
+          })
+        }}
+      />
     </main>
   )
 }

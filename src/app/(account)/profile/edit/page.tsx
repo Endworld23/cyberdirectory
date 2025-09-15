@@ -1,8 +1,3 @@
-// app/(account)/profile/edit/page.tsx
-export const metadata = {
-  title: 'Edit profile · CyberDirectory',
-  robots: { index: false, follow: false },
-};
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
 import EditProfileForm from '../EditProfileForm';
@@ -11,6 +6,23 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import AccountNav from '../_components/AccountNav';
 import { cookies } from 'next/headers';
+
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Edit profile — Cyber Directory'
+  const description = 'Update your display name, username, and avatar.'
+  const canonical = '/account/profile/edit'
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'profile' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +37,7 @@ async function resendVerificationAction() {
   const lastMs = last ? Number(last) : 0;
   if (lastMs && now - lastMs < 60_000) {
     // Too soon; just revalidate so UI updates remaining time
-    revalidatePath('/profile/edit');
+    revalidatePath('/account/profile/edit');
     return;
   }
 
@@ -35,11 +47,11 @@ async function resendVerificationAction() {
   try {
     await sb.auth.resend({ type: 'signup', email });
     // store send timestamp (httpOnly cookie)
-    c.set('cd_resend_ts', String(now), { httpOnly: true, sameSite: 'lax', path: '/profile', maxAge: 60 });
+    c.set('cd_resend_ts', String(now), { httpOnly: true, sameSite: 'lax', path: '/account/profile', maxAge: 60 });
   } catch (_e) {
     // swallow errors intentionally
   }
-  revalidatePath('/profile/edit');
+  revalidatePath('/account/profile/edit');
 }
 
 export default async function EditProfilePage() {
@@ -48,7 +60,7 @@ export default async function EditProfilePage() {
 
   const { data: auth, error: authErr } = await sb.auth.getUser();
   if (authErr || !auth?.user) {
-    redirect('/login?next=/profile/edit');
+    redirect('/login?next=/account/profile/edit');
   }
 
   const { data: profile, error } = await sb
@@ -97,7 +109,7 @@ export default async function EditProfilePage() {
         </div>
       )}
       <nav className="text-sm text-gray-500">
-        <Link href="/profile" className="hover:underline">← Back to profile</Link>
+        <Link href="/account/profile" className="hover:underline">← Back to profile</Link>
       </nav>
       <AccountNav />
       <h1 className="text-2xl font-semibold">Edit profile</h1>

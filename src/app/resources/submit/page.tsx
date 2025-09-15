@@ -3,7 +3,23 @@ import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import SubmissionForm from '@/components/submissions/SubmissionsForm'
 
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Submit a Resource — Cyber Directory'
+  const description = 'Share a tool, link, or service with the Cyber Directory community. Submissions are reviewed before publishing.'
+  const canonical = '/resources/submit'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 export type SimpleOption = { id: string; name: string; slug: string }
 
@@ -37,8 +53,9 @@ export default async function SubmitResourcePage({ searchParams }: { searchParam
       </header>
 
       {success && (
-        <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-          Thanks! Your submission was received and is pending review.
+        <div className="mb-6 rounded-xl border border-green-300 bg-green-50 p-5 text-sm text-green-900">
+          <p className="font-medium">Submission received</p>
+          <p>Your resource is pending review. You’ll see it in the directory once approved.</p>
         </div>
       )}
 

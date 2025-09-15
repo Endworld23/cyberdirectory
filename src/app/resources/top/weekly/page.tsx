@@ -6,7 +6,23 @@ import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
 
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Top — Weekly — Cyber Directory'
+  const description = 'Most‑voted cybersecurity resources this week.'
+  const canonical = '/resources/top/weekly'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type SearchParams = { size?: string }
 
@@ -55,7 +71,29 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
     .select('resource_id')
     .gte('created_at', since)
     .limit(5000)
-  if (vErr) return <div className="p-6 text-red-600">Error: {vErr.message}</div>
+  if (vErr) {
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Top — Weekly</h1>
+            <p className="text-sm text-gray-600">Most voted resources this week.</p>
+            <nav className="mt-1 text-xs text-gray-600">
+              <a className="underline mr-3" href="/resources/trending">Trending</a>
+              <a className="underline mr-3" href="/resources/top">All‑time</a>
+              <span aria-current="page" className="mr-3 font-medium text-gray-900">Weekly</span>
+              <a className="underline" href="/resources/top/monthly">Monthly</a>
+            </nav>
+          </div>
+        </header>
+        <EmptyState
+          title="Failed to load weekly top"
+          message={vErr.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+        />
+      </main>
+    )
+  }
 
   const counts = new Map<string, number>()
   for (const row of voteRows ?? []) {
@@ -71,7 +109,7 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
     return (
       <main className="mx-auto max-w-5xl p-6">
         <header className="mb-4">
-          <h1 className="text-2xl font-semibold">Top — This Week</h1>
+          <h1 className="text-2xl font-semibold">Top — Weekly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 7 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
             <a className="underline mr-3" href="/resources/trending">Trending</a>
@@ -137,7 +175,7 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
     <main className="mx-auto max-w-5xl p-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Top — This Week</h1>
+          <h1 className="text-2xl font-semibold">Top — Weekly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 7 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
             <a className="underline mr-3" href="/resources/trending">Trending</a>
@@ -214,6 +252,28 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
           )
         })}
       </ul>
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Top resources — Weekly',
+            url: `${site}/resources/top/weekly`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${site}/resources/${r.slug}`,
+                name: r.title ?? 'Untitled',
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   )
 }

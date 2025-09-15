@@ -4,7 +4,23 @@ import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import EmptyState from '@/components/EmptyState'
 
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Your Submissions — Cyber Directory'
+  const description = 'Track pending, approved, and rejected submissions you have made.'
+  const canonical = '/me/submissions'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type Submission = {
   id: string
@@ -27,22 +43,33 @@ export default async function MySubmissionsPage() {
     redirect(`/login?next=${encodeURIComponent(nextPath)}`)
   }
 
-  const { data, error } = await s
+  const { data, error, count } = await s
     .from('submissions')
-    .select('id, title, url, status, created_at, notes, category_slug, tag_slugs, pricing')
+    .select('id, title, url, status, created_at, notes, category_slug, tag_slugs, pricing', { count: 'exact' })
     .eq('user_id', auth.user.id)
     .order('created_at', { ascending: false })
 
   if (error) {
     return (
-      <main className="mx-auto max-w-5xl p-6">
-        <h1 className="text-2xl font-semibold">My submissions</h1>
-        <p className="mt-4 text-red-600">Failed to load: {error.message}</p>
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">My submissions</h1>
+            <p className="text-sm text-gray-600">Track pending, approved, and rejected submissions.</p>
+          </div>
+          <Link href="/resources/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
+        </header>
+        <EmptyState
+          title="Failed to load submissions"
+          message={error.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</a>}
+        />
       </main>
     )
   }
 
   const rows = (data ?? []) as Submission[]
+  const total = count ?? rows.length
 
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-6">
@@ -53,6 +80,7 @@ export default async function MySubmissionsPage() {
         </div>
         <Link href="/resources/submit" className="rounded-xl bg-black px-3 py-2 text-sm text-white">New submission</Link>
       </header>
+      <div className="text-sm text-gray-600">Total submissions: {total}</div>
 
       {rows.length === 0 ? (
         <EmptyState
@@ -108,6 +136,28 @@ export default async function MySubmissionsPage() {
           ))}
         </ul>
       )}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Your submissions',
+            url: `${site}/me/submissions`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: r.url,
+                name: r.title,
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   )
 }

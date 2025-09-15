@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
 import AccountNav from './_components/AccountNav';
+import EmptyState from '@/components/EmptyState';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +54,7 @@ export default async function ProfilePage() {
   const sb = await createClientServer();
 
   const { data: auth, error: authErr } = await sb.auth.getUser();
-  if (authErr || !auth?.user) redirect('/login?next=/profile');
+  if (authErr || !auth?.user) redirect('/login?next=/account/profile');
   const userId = auth.user.id;
 
   // ---- Load profile ----
@@ -156,7 +157,7 @@ export default async function ProfilePage() {
               profile?.avatar_url ||
               `https://api.dicebear.com/9.x/identicon/svg?seed=${encodeURIComponent(userId)}`
             }
-            alt="Avatar"
+            alt={profile?.display_name ? `${profile.display_name} avatar` : 'Account avatar'}
             className="h-16 w-16 rounded-full border bg-white object-cover"
           />
           <div>
@@ -166,7 +167,7 @@ export default async function ProfilePage() {
             )}
             <p className="text-xs text-gray-400 mt-1">Joined {fmt(profile?.created_at ?? '')}</p>
             <div className="mt-2 flex flex-wrap gap-3">
-              <Link href="/profile/edit" className="rounded-lg px-3 py-1 border shadow-sm">Edit profile</Link>
+              <Link href="/account/profile/edit" className="rounded-lg px-3 py-1 border shadow-sm">Edit profile</Link>
               <Link href="/me/saves" className="rounded-lg px-3 py-1 border shadow-sm">My saves</Link>
               <Link href="/me/submissions" className="rounded-lg px-3 py-1 border shadow-sm">My submissions</Link>
             </div>
@@ -260,7 +261,11 @@ export default async function ProfilePage() {
             })}
           </ul>
         ) : (
-          <p className="text-gray-500">No recent activity yet.</p>
+          <EmptyState
+            title="No recent activity"
+            message="When you comment, vote, save, or submit, your latest activity will show up here."
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900 text-sm">Browse resources</Link>}
+          />
         )}
       </section>
 
@@ -285,7 +290,11 @@ export default async function ProfilePage() {
             })}
           </ul>
         ) : (
-          <p className="text-gray-500">No comments yet.</p>
+          <EmptyState
+            title="No comments yet"
+            message="Join a discussion from any resource page to get started."
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900 text-sm">Explore resources</Link>}
+          />
         )}
       </section>
     </div>

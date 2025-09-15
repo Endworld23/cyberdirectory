@@ -53,7 +53,7 @@ export async function generateMetadata(
   const s = await createClientServer()
   const { data } = await s
     .from('resources')
-    .select('title, description, slug, logo_url')
+    .select('title, description, slug, logo_url, created_at')
     .eq('slug', slug)
     .eq('is_approved', true)
     .single()
@@ -65,11 +65,11 @@ export async function generateMetadata(
   return {
     title,
     description,
-    alternates: { canonical: `${site}/resources/${slug}` },
+    alternates: { canonical: `/resources/${slug}` },
     openGraph: {
       title,
       description,
-      url: `${site}/resources/${slug}`,
+      url: `/resources/${slug}`,
       images: [{ url: ogImage }],
       type: 'article',
     },
@@ -204,15 +204,21 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
     email: `mailto:?subject=${encodeURIComponent(r.title)}&body=${encodeURIComponent(shareUrl)}`,
   }
 
-  // JSON-LD (CreativeWork baseline)
+  // JSON-LD (CreativeWork for this resource page)
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'CreativeWork',
     name: r.title,
     description: r.description ?? undefined,
-    url: r.url ?? undefined,
+    url: shareUrl, // the URL of this page
+    mainEntityOfPage: shareUrl,
     image: r.logo_url ?? undefined,
     about: tags.length ? tags.map(t => t.name) : undefined,
+    keywords: tags.length ? tags.map(t => t.name).join(', ') : undefined,
+    genre: category?.name ?? undefined,
+    sameAs: r.url || undefined,
+    datePublished: r.created_at ? new Date(r.created_at).toISOString() : undefined,
+    isAccessibleForFree: true,
   }
 
   let faviconUrl: string | null = null
@@ -253,7 +259,7 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
             </span>
             {category && (
               <Link
-                href={`/categories/${category.slug}`}
+                href={`/resources/categories/${category.slug}`}
                 className="rounded-full border px-2 py-0.5 text-xs hover:bg-gray-50"
               >
                 #{category.name}
@@ -262,7 +268,7 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
             {tags.map(t => (
               <Link
                 key={t.id}
-                href={`/tags/${t.slug}`}
+                href={`/resources/tags/${t.slug}`}
                 className="rounded-full border px-2 py-0.5 text-xs hover:bg-gray-50"
               >
                 #{t.name}

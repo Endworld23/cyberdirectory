@@ -6,7 +6,23 @@ import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
 
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Top — All Time — Cyber Directory'
+  const description = 'Most‑voted cybersecurity resources across all time.'
+  const canonical = '/resources/top'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type SearchParams = { size?: string }
 
@@ -57,7 +73,29 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
     .order('created_at', { ascending: false })
     .limit(size)
 
-  if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
+  if (error) {
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Top — All Time</h1>
+            <p className="text-sm text-gray-600">Most voted resources overall.</p>
+            <nav className="mt-1 text-xs text-gray-600">
+              <a className="underline mr-3" href="/resources/trending">Trending</a>
+              <span aria-current="page" className="mr-3 font-medium text-gray-900">All‑time</span>
+              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+              <a className="underline" href="/resources/top/monthly">Monthly</a>
+            </nav>
+          </div>
+        </header>
+        <EmptyState
+          title="Failed to load top resources"
+          message="Please refresh the page or try again later."
+          primaryAction={<a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</a>}
+        />
+      </main>
+    )
+  }
 
   const rows = (data ?? []) as Array<{
     id: string
@@ -182,6 +220,29 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
           })}
         </ul>
       )}
+
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Top resources — All time',
+            url: `${site}/resources/top`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${site}/resources/${r.slug}`,
+                name: r.title ?? 'Untitled',
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   )
 }

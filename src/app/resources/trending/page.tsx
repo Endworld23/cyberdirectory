@@ -2,8 +2,23 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { createClientServer } from '@/lib/supabase-server';
 import EmptyState from '@/components/EmptyState'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Trending — Cyber Directory'
+  const description = 'Top cybersecurity resources by outbound clicks in the last 7 days.'
+  const canonical = '/resources/trending'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type TrendingRow = {
   resource_id: string;
@@ -21,11 +36,24 @@ export default async function TrendingPage() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-3xl p-6">
-        <h1 className="text-2xl font-bold mb-4">Trending</h1>
-        <p className="text-red-600">Failed to load trending resources.</p>
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header>
+          <h1 className="text-2xl font-bold">Trending</h1>
+          <p className="text-gray-600">Top resources by outbound clicks in the last 7 days.</p>
+          <nav className="mt-2 text-xs text-gray-600">
+            <span aria-current="page" className="mr-3 font-medium text-gray-900">Trending</span>
+            <a className="underline mr-3" href="/resources/top">All‑time</a>
+            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <a className="underline" href="/resources/top/monthly">Monthly</a>
+          </nav>
+        </header>
+        <EmptyState
+          title="Failed to load trending"
+          message="Please refresh the page or try again later."
+          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+        />
       </main>
-    );
+    )
   }
 
   return (
@@ -73,6 +101,28 @@ export default async function TrendingPage() {
           ))}
         </ol>
       )}
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Trending resources',
+            url: `${site}/resources/trending`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${site}/resources/${r.slug}`,
+                name: r.title ?? 'Untitled',
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   );
 }

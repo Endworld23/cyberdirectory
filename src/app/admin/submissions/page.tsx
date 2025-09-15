@@ -6,8 +6,24 @@ import { createClientServer } from '@/lib/supabase-server'
 import { approveSubmission, rejectSubmission, approveWithEdits } from './actions'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Admin — Submissions — Cyber Directory'
+  const description = 'Review pending, approved, and rejected submissions.'
+  const canonical = '/admin/submissions'
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type Submission = {
   id: string
@@ -38,6 +54,7 @@ function Tab({ to, active }: { to: string; active: boolean }) {
   return (
     <Link
       href={to}
+      aria-current={active ? 'page' : undefined}
       className={[
         'rounded-full px-3 py-1 text-sm border',
         active ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300',
@@ -75,6 +92,10 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
+  const pendingQS = new URLSearchParams({ status: 'pending_review', page: '1', ...(q ? { q } : {}) })
+  const approvedQS = new URLSearchParams({ status: 'approved', page: '1', ...(q ? { q } : {}) })
+  const rejectedQS = new URLSearchParams({ status: 'rejected', page: '1', ...(q ? { q } : {}) })
+
   // Query w/ optional search (title/url/description) and explicit columns
   let query = s
     .from('submissions')
@@ -93,7 +114,30 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
 
   const { data: subs, error, count } = await query
   if (error) {
-    return <div className="p-6 text-red-600">Failed to load submissions: {error.message}</div>
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl font-semibold">Submissions</h1>
+          <nav className="flex gap-2">
+            <Tab to={`/admin/submissions?${pendingQS.toString()}`} active={status === 'pending_review'} />
+            <Tab to={`/admin/submissions?${approvedQS.toString()}`} active={status === 'approved'} />
+            <Tab to={`/admin/submissions?${rejectedQS.toString()}`} active={status === 'rejected'} />
+          </nav>
+        </header>
+        <EmptyState
+          title="Failed to load submissions"
+          message={error.message || 'Please refresh the page or try again later.'}
+          primaryAction={
+            <a
+              href={`/admin/submissions?status=${status}&page=1${q ? `&q=${encodeURIComponent(q)}` : ''}`}
+              className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900"
+            >
+              Retry
+            </a>
+          }
+        />
+      </main>
+    )
   }
 
   const total = count ?? 0
@@ -110,12 +154,8 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
   const nextQS = new URLSearchParams(baseQS)
   nextQS.set('page', String(page + 1))
 
-  const pendingQS = new URLSearchParams({ status: 'pending_review', page: '1', ...(q ? { q } : {}) })
-  const approvedQS = new URLSearchParams({ status: 'approved', page: '1', ...(q ? { q } : {}) })
-  const rejectedQS = new URLSearchParams({ status: 'rejected', page: '1', ...(q ? { q } : {}) })
-
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold">Submissions</h1>
         <nav className="flex gap-2">

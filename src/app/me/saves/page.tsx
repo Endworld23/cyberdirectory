@@ -6,8 +6,23 @@ import { createClientServer } from '@/lib/supabase-server'
 import SaveButton from '@/components/SaveButton'
 import { revalidatePath } from 'next/cache'
 import EmptyState from '@/components/EmptyState'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Your Saved Resources — Cyber Directory'
+  const description = 'All the resources you have saved in Cyber Directory.'
+  const canonical = '/me/saves'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 // Server action: remove a save (progressive enhancement fallback to client SaveButton)
 export async function removeSaveAction(formData: FormData) {
@@ -73,10 +88,16 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
     .order('created_at', { ascending: false });
 
   if (savesErr) {
-    return <main className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-semibold">Saved resources</h1>
-      <p className="mt-4 text-red-600" role="status" aria-live="polite">Failed to load saves: {savesErr.message}</p>
-    </main>
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <Header total={0} q={(sp.q ?? '').trim()} sort={(sp.sort as 'trending'|'new'|'top') || 'new'} />
+        <EmptyState
+          title="Failed to load saved resources"
+          message={savesErr.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</a>}
+        />
+      </main>
+    )
   }
 
   // Unique IDs, preserving recent-first order
@@ -88,7 +109,7 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
 
   if (resourceIds.length === 0) {
     return (
-      <main className="mx-auto max-5xl p-6 space-y-6">
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
         <Header total={0} q={q} sort={sort} />
         <EmptyState
           title="No saved resources yet"
@@ -129,10 +150,16 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
 
   const { data, count, error } = await query.range(from, to)
   if (error) {
-    return <main className="mx-auto max-w-5xl p-6">
-      <Header total={0} q={q} sort={sort} />
-      <p className="mt-4 text-red-600">Error: {error.message}</p>
-    </main>
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <Header total={0} q={q} sort={sort} />
+        <EmptyState
+          title="Failed to load saved resources"
+          message={error.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</a>}
+        />
+      </main>
+    )
   }
 
   const rows = (data ?? []) as Row[]
@@ -211,6 +238,28 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
       </ul>
 
       <Pager page={page} pageCount={pageCount} params={{ q, sort }} />
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Your saved resources',
+            url: `${site}/me/saves`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: (from + i + 1),
+                url: `${site}/resources/${r.slug}`,
+                name: r.title,
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   )
 }

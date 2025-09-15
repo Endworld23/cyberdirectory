@@ -9,6 +9,22 @@ import ResourceFilters from '@/components/filters/ResourceFilters'
 
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'All Resources — Cyber Directory'
+  const description = 'Browse the full directory of submitted cybersecurity resources.'
+  const canonical = '/resources'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
+
 type SearchParams = {
   size?: string
   q?: string
@@ -55,7 +71,7 @@ export async function voteAction(formData: FormData) {
   revalidatePath('/resources')
 }
 
-export default async function TrendingPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function ResourcesPage({ searchParams }: { searchParams?: SearchParams }) {
   const s = await createClientServer()
   const sizeRaw = Number((searchParams?.size ?? '10').trim())
   const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 10
@@ -63,17 +79,52 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
   const qParam = (searchParams?.q ?? '').trim()
   const sort = (searchParams?.sort ?? '').trim() || 'new'
 
+  // Choose the appropriate view based on sort
+  const baseTable = sort === 'trending' ? 'resource_trending' : 'resource_public_stats'
+
   let query = s
-    .from('resource_trending')
+    .from(baseTable)
     .select('*')
     .eq('is_approved', true)
 
-  if (qParam) {
-    const like = qParam.replace(/%/g, '')
-    query = query.or(`title.ilike.%${like}%,description.ilike.%${like}%`)
+  // Optional: filter by category slug
+  if ((searchParams?.category ?? '').trim()) {
+    const catSlug = (searchParams?.category ?? '').trim()
+    const { data: cat } = await s.from('categories').select('id,slug').ilike('slug', catSlug).maybeSingle()
+    if (cat?.id) {
+      query = query.eq('category_id', cat.id)
+    }
   }
 
-  // Sorting: default to newest; allow top/comments; fallback to trending_score if unknown
+  // Optional: filter by tag slug (resolve resource_ids via join table)
+  if ((searchParams?.tag ?? '').trim()) {
+    const tagSlug = (searchParams?.tag ?? '').trim()
+    const { data: tag } = await s.from('tags').select('id,slug').ilike('slug', tagSlug).maybeSingle()
+    if (tag?.id) {
+      const { data: links } = await s.from('resource_tags').select('resource_id').eq('tag_id', tag.id)
+      const ids = (links ?? []).map((r: any) => r.resource_id)
+      if (ids.length > 0) {
+        query = query.in('id', ids)
+      } else {
+        // short-circuit no results
+        query = query.in('id', ['__none__'])
+      }
+    }
+  }
+
+  // Text search / fallback
+  if (qParam) {
+    const like = qParam.replace(/%/g, '')
+    // @ts-ignore allow textSearch when available
+    if (typeof (query as any).textSearch === 'function') {
+      // @ts-ignore
+      query = (query as any).textSearch('search_vec', qParam, { type: 'websearch' })
+    } else {
+      query = query.or(`title.ilike.%${like}%,description.ilike.%${like}%`)
+    }
+  }
+
+  // Sorting semantics
   switch (sort) {
     case 'top':
       query = query.order('votes_count', { ascending: false, nullsFirst: false })
@@ -84,8 +135,10 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     case 'new':
       query = query.order('created_at', { ascending: false })
       break
+    case 'trending':
     default:
       query = query.order('trending_score', { ascending: false })
+      break
   }
 
   const { data, error } = await query.limit(size)
@@ -119,7 +172,16 @@ export default async function TrendingPage({ searchParams }: { searchParams?: Se
     for (const sv of mySaves.data ?? []) savedIds.add((sv as any).resource_id as string)
   }
 
-  const sizeHref = (n: number) => (n === 10 ? '/resources' : `/resources?size=${n}`)
+  const sizeHref = (n: number) => {
+    const u = new URLSearchParams()
+    if (n !== 10) u.set('size', String(n))
+    if (qParam) u.set('q', qParam)
+    if ((searchParams?.category ?? '').trim()) u.set('category', (searchParams?.category ?? '').trim())
+    if ((searchParams?.tag ?? '').trim()) u.set('tag', (searchParams?.tag ?? '').trim())
+    if (sort && sort !== 'new') u.set('sort', sort)
+    const qs = u.toString()
+    return qs ? `/resources?${qs}` : '/resources'
+  }
 
   return (
     <main className="mx-auto max-w-5xl p-6">

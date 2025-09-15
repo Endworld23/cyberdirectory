@@ -5,8 +5,23 @@ import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const title = 'Top — Monthly — Cyber Directory'
+  const description = 'Most‑voted cybersecurity resources in the last 30 days.'
+  const canonical = '/resources/top/monthly'
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'website' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 type SearchParams = { size?: string }
 
@@ -55,7 +70,29 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
     .select('resource_id')
     .gte('created_at', since)
     .limit(10000)
-  if (vErr) return <div className="p-6 text-red-600">Error: {vErr.message}</div>
+  if (vErr) {
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Top — Monthly</h1>
+            <p className="text-sm text-gray-600">Most voted resources in the last 30 days.</p>
+            <nav className="mt-1 text-xs text-gray-600">
+              <a className="underline mr-3" href="/resources/trending">Trending</a>
+              <a className="underline mr-3" href="/resources/top">All‑time</a>
+              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+              <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
+            </nav>
+          </div>
+        </header>
+        <EmptyState
+          title="Failed to load monthly top"
+          message={vErr.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+        />
+      </main>
+    )
+  }
 
   const counts = new Map<string, number>()
   for (const row of voteRows ?? []) {
@@ -71,7 +108,7 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
     return (
       <main className="mx-auto max-w-5xl p-6">
         <header className="mb-4">
-          <h1 className="text-2xl font-semibold">Top — This Month</h1>
+          <h1 className="text-2xl font-semibold">Top — Monthly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
             <a className="underline mr-3" href="/resources/trending">Trending</a>
@@ -100,7 +137,29 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
     .eq('is_approved', true)
     .in('id', sortedIds)
 
-  if (error) return <div className="p-6 text-red-600">Error: {error.message}</div>
+  if (error) {
+    return (
+      <main className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Top — Monthly</h1>
+            <p className="text-sm text-gray-600">Most voted resources in the last 30 days.</p>
+            <nav className="mt-1 text-xs text-gray-600">
+              <a className="underline mr-3" href="/resources/trending">Trending</a>
+              <a className="underline mr-3" href="/resources/top">All‑time</a>
+              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+              <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
+            </nav>
+          </div>
+        </header>
+        <EmptyState
+          title="Failed to load monthly top"
+          message={error.message || 'Please refresh the page or try again later.'}
+          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+        />
+      </main>
+    )
+  }
 
   const rows = (data ?? []) as Array<{
     id: string
@@ -137,7 +196,7 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
     <main className="mx-auto max-w-5xl p-6">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Top — This Month</h1>
+          <h1 className="text-2xl font-semibold">Top — Monthly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
             <a className="underline mr-3" href="/resources/trending">Trending</a>
@@ -214,6 +273,28 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
           )
         })}
       </ul>
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: 'Top resources — Monthly',
+            url: `${site}/resources/top/monthly`,
+            hasPart: {
+              '@type': 'ItemList',
+              numberOfItems: rows.length,
+              itemListElement: rows.map((r, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${site}/resources/${r.slug}`,
+                name: r.title ?? 'Untitled',
+              })),
+            },
+          }),
+        }}
+      />
     </main>
   )
 }

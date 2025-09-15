@@ -3,8 +3,24 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import EmptyState from '@/components/EmptyState'
+import type { Metadata } from 'next'
+const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: { params: { handle: string } }): Promise<Metadata> {
+  const handle = params.handle
+  const title = `@${handle} — Profile — Cyber Directory`
+  const description = `Public profile for @${handle} on Cyber Directory.`
+  const canonical = `/u/${handle}`
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: { title, description, url: canonical, type: 'profile' },
+    twitter: { card: 'summary_large_image', title, description },
+  }
+}
 
 // ---------------------------------------------
 // Helpers
@@ -114,10 +130,10 @@ export default async function PublicProfilePage({ params }: { params: { handle: 
         </div>
       </header>
 
-      {/* Tabs nav (placeholder for future sections) */}
+      {/* Tabs nav */}
       <nav className="text-xs text-gray-600">
         <span aria-current="page" className="mr-3 font-medium text-gray-900">Overview</span>
-        <Link className="underline mr-3" href={`/me/saves`}>Your saves</Link>
+        <Link className="underline mr-3" href={`/u/${profile.handle}/submissions`}>Submissions</Link>
         <Link className="underline" href={`/resources/submit`}>Submit</Link>
       </nav>
 
@@ -165,6 +181,23 @@ export default async function PublicProfilePage({ params }: { params: { handle: 
           </ul>
         )}
       </section>
+      <script
+        type="application/ld+json"
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'ProfilePage',
+            name: profile.display_name || `@${profile.handle}`,
+            url: `${site}/u/${profile.handle}`,
+            mainEntity: {
+              '@type': 'Person',
+              name: profile.display_name || `@${profile.handle}`,
+              identifier: profile.id,
+            },
+          }),
+        }}
+      />
     </main>
   )
 }
