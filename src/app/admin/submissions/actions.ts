@@ -28,12 +28,13 @@ async function assertAdmin() {
   return s
 }
 
-// Generate a slug that avoids collisions by appending -2, -3, ...
+// Generate a slug that avoids collisions by appending -1, -2, -3, ...
 async function uniqueSlug(base: string) {
   const s = await ensureClient()
   const root = slugify(base || 'item')
   let candidate = root
-  for (let n = 1; n <= 250; n++) {
+  for (let n = 0; n <= 250; n++) {
+    candidate = n === 0 ? root : `${root}-${n}`
     const { data, error } = await s
       .from('resources')
       .select('id')
@@ -42,7 +43,6 @@ async function uniqueSlug(base: string) {
       .maybeSingle()
     if (error) throw error
     if (!data) return candidate
-    candidate = `${root}-${n + 1}`
   }
   throw new Error('Could not generate a unique slug')
 }
@@ -60,18 +60,32 @@ export async function approveSubmission(formData: FormData) {
   if (e0) throw e0
   if (!sub) throw new Error('Submission not found')
 
-  let category_id: string | null = null
-  if (sub.category_slug) {
+  // Prefer an existing submission.slug if present; otherwise derive from title
+  const baseSlug = (sub as any).slug || sub.title || 'item'
+
+  // Category: accept either category_id directly or upsert by category_slug
+  let category_id: string | null = (sub as any).category_id ?? null
+  const incomingCategorySlug: string | null = (sub as any).category_slug ?? null
+
+  if (!category_id && incomingCategorySlug) {
     const { data: cat, error: e1 } = await s
       .from('categories')
-      .upsert({ slug: sub.category_slug, name: sub.category_slug })
+      .upsert({ slug: incomingCategorySlug, name: incomingCategorySlug })
       .select('id')
       .single()
     if (e1) throw e1
     category_id = cat?.id ?? null
   }
 
-  const safeSlug = await uniqueSlug(sub.title)
+  // Tags: accept either tag_slugs (string[]) or tags (text[])
+  const rawTagSlugs: string[] = Array.isArray((sub as any).tag_slugs)
+    ? (sub as any).tag_slugs
+    : Array.isArray((sub as any).tags)
+    ? (sub as any).tags
+    : []
+  const finalTags = rawTagSlugs.map((t: string) => slugify(String(t)))
+
+  const safeSlug = await uniqueSlug(baseSlug)
 
   const { data: res, error: e2 } = await s
     .from('resources')
@@ -89,10 +103,10 @@ export async function approveSubmission(formData: FormData) {
     .single()
   if (e2) throw e2
 
-  if (Array.isArray(sub.tag_slugs) && sub.tag_slugs.length) {
+  if (finalTags.length) {
     const { data: tags, error: e3 } = await s
       .from('tags')
-      .upsert(sub.tag_slugs.map((sl: string) => ({ slug: sl, name: sl })))
+      .upsert(finalTags.map((sl: string) => ({ slug: sl, name: sl })))
       .select('id,slug')
     if (e3) throw e3
 
@@ -107,6 +121,7 @@ export async function approveSubmission(formData: FormData) {
   if (e5) throw e5
 
   revalidatePath('/resources')
+  revalidatePath('/resources/[slug]')
   revalidatePath('/admin/submissions')
   return res?.id
 }
@@ -155,17 +170,11 @@ export async function approveWithEdits(formData: FormData) {
   if (e0) throw e0
   if (!sub) throw new Error('Submission not found')
 
-  const finalTitle = title || sub.title
-  const finalUrl = url || sub.url
-  const finalDesc = description ?? sub.description
-  const finalCategorySlug = category_slug || sub.category_slug || null
-  const finalPricing = (pricing as string) || sub.pricing || 'unknown'
-  const finalLogo = logo_url || sub.logo_url || null
-  const finalTags =
-    tag_slugs.length ? tag_slugs : Array.isArray(sub.tag_slugs) ? sub.tag_slugs : []
+  const baseSlug = (sub as any).slug || title || 'item'
 
-  let category_id: string | null = null
-  if (finalCategorySlug) {
+  const finalCategorySlug = (category_slug || (sub as any).category_slug || null) as string | null
+  let category_id: string | null = (sub as any).category_id ?? null
+  if (!category_id && finalCategorySlug) {
     const { data: cat, error: e1 } = await s
       .from('categories')
       .upsert({ slug: finalCategorySlug, name: finalCategorySlug })
@@ -175,7 +184,22 @@ export async function approveWithEdits(formData: FormData) {
     category_id = cat?.id ?? null
   }
 
-  const safeSlug = await uniqueSlug(finalTitle)
+  const finalTags: string[] = (tag_slugs.length
+    ? tag_slugs
+    : Array.isArray((sub as any).tag_slugs)
+    ? (sub as any).tag_slugs
+    : Array.isArray((sub as any).tags)
+    ? (sub as any).tags
+    : [])
+    .map((t: string) => slugify(String(t)))
+
+  const safeSlug = await uniqueSlug(baseSlug)
+
+  const finalTitle = title || sub.title
+  const finalUrl = url || sub.url
+  const finalDesc = description ?? sub.description
+  const finalPricing = (pricing as string) || sub.pricing || 'unknown'
+  const finalLogo = logo_url || sub.logo_url || null
 
   const { data: res, error: e2 } = await s
     .from('resources')
@@ -211,6 +235,7 @@ export async function approveWithEdits(formData: FormData) {
   if (e5) throw e5
 
   revalidatePath('/resources')
+  revalidatePath('/resources/[slug]')
   revalidatePath('/admin/submissions')
   return res?.id
 }

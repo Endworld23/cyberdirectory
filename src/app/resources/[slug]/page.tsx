@@ -5,8 +5,11 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import VoteWidget from '@/components/VoteWidget'
-import CommentsSection from '@/components/CommentsSection'
 import SaveButton from '@/components/SaveButton'
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import PendingButton from '@/components/PendingButton'
+import EmptyState from '@/components/EmptyState'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,9 +43,9 @@ const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').repla
 
 /* ------------------ Metadata ------------------ */
 export async function generateMetadata(
-  { params }: { params: Promise<Params> }
+  { params }: { params: Params }
 ): Promise<Metadata> {
-  const { slug } = await params
+  const { slug } = params
 
   const s = await createClientServer()
   const { data } = await s
@@ -77,8 +80,36 @@ export async function generateMetadata(
 }
 
 /* ------------------ Page ------------------ */
-export default async function ResourceBySlug({ params }: { params: Promise<Params> }) {
-  const { slug } = await params
+export async function createCommentAction(formData: FormData) {
+  'use server'
+  const s = await createClientServer()
+  const { data: auth } = await s.auth.getUser()
+  const user = auth?.user
+  const resourceId = String(formData.get('resourceId') ?? '')
+  const slug = String(formData.get('slug') ?? '')
+  const body = String(formData.get('body') ?? '').trim()
+
+  if (!user) return redirect(`/login?next=/resources/${slug || ''}`)
+  if (!resourceId || body.length < 2) return
+
+  await s.from('comments').insert({ resource_id: resourceId, user_id: user.id, body })
+  revalidatePath(`/resources/${slug}`)
+}
+
+export async function deleteOwnCommentAction(formData: FormData) {
+  'use server'
+  const s = await createClientServer()
+  const { data: auth } = await s.auth.getUser()
+  const user = auth?.user
+  const slug = String(formData.get('slug') ?? '')
+  const commentId = String(formData.get('commentId') ?? '')
+  if (!user || !commentId) return
+  await s.from('comments').delete().eq('id', commentId).eq('user_id', user.id)
+  revalidatePath(`/resources/${slug}`)
+}
+
+export default async function ResourceBySlug({ params }: { params: Params }) {
+  const { slug } = params
   const s = await createClientServer()
 
   // Load resource
@@ -123,13 +154,13 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
   const { data: auth } = await s.auth.getUser()
   let initialSaved = false
   if (auth?.user) {
-    const { data: fav } = await s
-      .from('favorites')
+    const { data: sv } = await s
+      .from('saves')
       .select('user_id')
       .eq('user_id', auth.user.id)
       .eq('resource_id', r.id)
       .maybeSingle()
-    initialSaved = !!fav
+    initialSaved = !!sv
   }
 
   // Related resources (share at least one tag, exclude current)
@@ -154,6 +185,13 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
       related = (rows2 ?? []) as RelatedRow[]
     }
   }
+
+  // Load comments (simple list; backend join to profiles can come later)
+  const { data: comments } = await s
+    .from('comments')
+    .select('id, user_id, body, created_at')
+    .eq('resource_id', r.id)
+    .order('created_at', { ascending: false })
 
   // Share links
   const shareUrl = `${site}/resources/${r.slug}`
@@ -247,8 +285,61 @@ export default async function ResourceBySlug({ params }: { params: Promise<Param
 
       {/* Comments */}
       <section>
-        <h2 className="text-lg font-medium mb-2">Comments</h2>
-        <CommentsSection resourceId={r.id} />
+        <h2 className="mb-2 text-lg font-medium">Comments</h2>
+        {/* Add Comment form */}
+        <form action={createCommentAction} className="rounded-2xl border p-4">
+          <input type="hidden" name="resourceId" value={r.id} />
+          <input type="hidden" name="slug" value={r.slug} />
+          <label htmlFor="comment-body" className="block text-sm font-medium">Add a comment</label>
+          <textarea
+            id="comment-body"
+            name="body"
+            required
+            minLength={2}
+            rows={3}
+            placeholder="Share your thoughts…"
+            className="mt-1 w-full rounded-xl border px-3 py-2"
+          />
+          <div className="mt-2 flex justify-end">
+            <PendingButton className="rounded-xl bg-black px-4 py-2 text-white" pendingText="Posting…">
+              Post comment
+            </PendingButton>
+          </div>
+        </form>
+
+        {/* List */}
+        {(!comments || comments.length === 0) ? (
+          <div className="mt-4">
+            <EmptyState
+              title="No comments yet"
+              message="Be the first to start the discussion."
+              primaryAction={
+                <a href="#comment-body" className="rounded-xl bg-black px-3 py-1.5 text-white">Add comment</a>
+              }
+            />
+          </div>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {comments.map((c) => (
+              <li key={c.id} className="rounded-2xl border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="whitespace-pre-wrap text-sm text-gray-900">{c.body}</p>
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      <time dateTime={c.created_at}>{new Date(c.created_at as any).toLocaleString()}</time>
+                    </div>
+                  </div>
+                  {/* Delete-own control; server will enforce ownership via RLS or filter */}
+                  <form action={deleteOwnCommentAction}>
+                    <input type="hidden" name="commentId" value={c.id} />
+                    <input type="hidden" name="slug" value={r.slug} />
+                    <PendingButton className="rounded border px-2 py-1 text-xs" pendingText="Removing…">Delete</PendingButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Related */}
