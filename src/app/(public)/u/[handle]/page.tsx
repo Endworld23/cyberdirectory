@@ -8,6 +8,78 @@ const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').repla
 
 export const dynamic = 'force-dynamic'
 
+type PublicProfile = {
+  id: string
+  handle: string
+  display_name: string | null
+  avatar_url: string | null
+  bio: string | null
+  created_at: string | null
+}
+
+type ResourceLite = {
+  id?: string
+  title: string
+  slug: string
+  logo_url?: string | null
+  affiliate_url?: string | null
+}
+
+type SubmissionLite = ResourceLite & {
+  id: string
+  created_at: string
+  status?: 'pending' | 'approved' | 'rejected' | null
+}
+
+type ReviewLite = {
+  id: string
+  rating: number
+  body: string | null
+  created_at: string
+  resource_id: string
+}
+
+type SubmissionRow = SubmissionLite
+
+type CommentRow = {
+  id: string
+  resource_id: string
+  body: string | null
+  created_at: string
+  resources: (ResourceLite & { logo_url: string | null }) | null
+}
+
+type VoteRow = {
+  id: string
+  resource_id: string
+  created_at: string
+  resources: (ResourceLite & { logo_url: string | null }) | null
+}
+
+type ActivityItem =
+  | ({ kind: 'submission' } & SubmissionLite)
+  | {
+      kind: 'comment'
+      id: string
+      created_at: string
+      resource_id: string
+      slug: string
+      title: string
+      body: string
+      logo_url?: string | null
+    }
+  | {
+      kind: 'vote'
+      id: string
+      created_at: string
+      resource_id: string
+      slug: string
+      title: string
+      logo_url?: string | null
+    }
+
+const ACTIVITY_LIMIT = 20
+
 export async function generateMetadata({ params }: { params: { handle: string } }): Promise<Metadata> {
   const handle = params.handle
   const title = `@${handle} — Profile — Cyber Directory`
@@ -22,96 +94,113 @@ export async function generateMetadata({ params }: { params: { handle: string } 
   }
 }
 
-// ---------------------------------------------
-// Helpers
-// ---------------------------------------------
 function fmtDate(dt?: string | null) {
   if (!dt) return ''
-  try { return new Date(dt).toLocaleString() } catch { return String(dt) }
+  try {
+    return new Date(dt).toLocaleString()
+  } catch {
+    return String(dt)
+  }
 }
 
-type Profile = {
-  id: string
-  handle: string
-  display_name: string | null
-  bio: string | null
-  avatar_url: string | null
-  created_at: string | null
-}
-
-// Activity item union for rendering a single list
-type ActivityItem =
-  | { kind: 'submission'; id: string; created_at: string; resource_id: string; slug: string; title: string; logo_url?: string | null }
-  | { kind: 'comment'; id: string; created_at: string; resource_id: string; slug: string; title: string; body: string; logo_url?: string | null }
-  | { kind: 'vote'; id: string; created_at: string; resource_id: string; slug: string; title: string; logo_url?: string | null }
-
-// ---------------------------------------------
-// Page
-// ---------------------------------------------
 export default async function PublicProfilePage({
   params,
-  searchParams: _searchParams,
+  searchParams,
 }: {
-  params: { handle: string };
-  searchParams: Record<string, string | string[] | undefined>;
+  params: { handle: string }
+  searchParams: Record<string, string | string[] | undefined>
 }) {
-  const handle = params.handle
-  const s = await createClientServer()
+  void searchParams
 
-  // 1) Load profile by handle
-  const { data: profile, error: pErr } = await s
+  const handle = params.handle
+  const supabase = await createClientServer()
+
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, handle, display_name, bio, avatar_url, created_at')
+    .select<PublicProfile>('id, handle, display_name, bio, avatar_url, created_at')
     .ilike('handle', handle)
     .maybeSingle()
 
-  if (pErr) throw new Error(pErr.message)
+  if (profileError) throw new Error(profileError.message)
   if (!profile) return notFound()
 
-  // 2) Parallel read-only queries for stats and activity
-  const [submissionsQ, commentsQ, votesQ] = await Promise.all([
-    s
+  const [submissionRes, commentRes, voteRes] = await Promise.all([
+    supabase
       .from('resources')
-      .select('id, slug, title, logo_url, created_at')
+      .select<SubmissionRow>('id, slug, title, logo_url, created_at')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
-    s
+    supabase
       .from('comments')
-      .select('id, resource_id, body, created_at, resources!inner(slug, title, logo_url)')
+      .select<CommentRow>('id, resource_id, body, created_at, resources!inner(slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
-    s
+    supabase
       .from('votes')
-      .select('id, resource_id, created_at, resources!inner(slug, title, logo_url)')
+      .select<VoteRow>('id, resource_id, created_at, resources!inner(slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
-  ] as const)
+  ])
 
-  // 3) Compute simple counts (safe fallbacks if RLS hides some rows)
-  const submissionsCount = submissionsQ?.data?.length ?? 0
-  const commentsCount = commentsQ?.data?.length ?? 0
-  const votesCount = votesQ?.data?.length ?? 0
+  const submissions = submissionRes.data ?? []
+  const comments = commentRes.data ?? []
+  const votes = voteRes.data ?? []
 
-  // 4) Merge activity items (up to 20 newest)
+  const submissionsCount = submissions.length
+  const commentsCount = comments.length
+  const votesCount = votes.length
+
   const activity: ActivityItem[] = []
-  for (const r of submissionsQ.data ?? []) {
-    activity.push({ kind: 'submission', id: r.id, created_at: r.created_at!, resource_id: r.id, slug: r.slug, title: r.title, logo_url: (r as any).logo_url })
-  }
-  for (const c of commentsQ.data ?? []) {
-    const res = (c as any).resources || {}
-    activity.push({ kind: 'comment', id: c.id, created_at: c.created_at!, resource_id: c.resource_id, slug: res.slug, title: res.title, body: (c as any).body, logo_url: res.logo_url })
-  }
-  for (const v of votesQ.data ?? []) {
-    const res = (v as any).resources || {}
-    activity.push({ kind: 'vote', id: v.id, created_at: v.created_at!, resource_id: v.resource_id, slug: res.slug, title: res.title, logo_url: res.logo_url })
-  }
-  activity.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
-  const recent = activity.slice(0, 20)
 
-  // 5) Favicon fallback
+  for (const submission of submissions) {
+    if (!submission.slug || !submission.title || !submission.created_at) continue
+    activity.push({
+      kind: 'submission',
+      id: submission.id,
+      created_at: submission.created_at,
+      resource_id: submission.id,
+      slug: submission.slug,
+      title: submission.title,
+      logo_url: submission.logo_url ?? undefined,
+      status: submission.status ?? null,
+    })
+  }
+
+  for (const comment of comments) {
+    const resource = comment.resources
+    if (!resource || !resource.slug || !resource.title) continue
+    activity.push({
+      kind: 'comment',
+      id: comment.id,
+      created_at: comment.created_at,
+      resource_id: comment.resource_id,
+      slug: resource.slug,
+      title: resource.title,
+      body: comment.body ?? '',
+      logo_url: resource.logo_url ?? undefined,
+    })
+  }
+
+  for (const vote of votes) {
+    const resource = vote.resources
+    if (!resource || !resource.slug || !resource.title) continue
+    activity.push({
+      kind: 'vote',
+      id: vote.id,
+      created_at: vote.created_at,
+      resource_id: vote.resource_id,
+      slug: resource.slug,
+      title: resource.title,
+      logo_url: resource.logo_url ?? undefined,
+    })
+  }
+
+  activity.sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
+  const recent = activity.slice(0, ACTIVITY_LIMIT)
+
   const avatar = profile.avatar_url
 
   return (
@@ -167,7 +256,9 @@ export default async function PublicProfilePage({
                     {item.kind === 'comment' && (
                       <div className="mt-1">
                         <Link href={`/resources/${item.slug}`} className="font-medium hover:underline">Commented on: {item.title}</Link>
-                        <p className="mt-1 line-clamp-3 text-sm text-gray-800">{(item as any).body}</p>
+                        {item.body ? (
+                          <p className="mt-1 line-clamp-3 text-sm text-gray-800">{item.body}</p>
+                        ) : null}
                       </div>
                     )}
                     {item.kind === 'vote' && (
