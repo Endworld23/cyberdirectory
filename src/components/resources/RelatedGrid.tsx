@@ -1,3 +1,4 @@
+import Link from 'next/link'
 
 
 import * as React from 'react'
@@ -36,20 +37,20 @@ export default function RelatedGrid({
         <EmptyState
           message={emptyMessage}
           primaryAction={
-            <a
+            <Link
               href="/resources/trending"
               className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900"
             >
               View trending
-            </a>
+            </Link>
           }
           secondaryActions={
-            <a
+            <Link
               href="/resources/top"
               className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               View top
-            </a>
+            </Link>
           }
         />
       ) : (

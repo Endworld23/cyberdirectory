@@ -1,4 +1,4 @@
-
+'use client';
 
 import * as React from 'react'
 import EmptyState from '@/components/EmptyState'
@@ -67,8 +67,7 @@ function CommentForm({
   minLength?: number
   maxLength?: number
 }) {
-  'use client'
-  const [value, setValue] = React.useState('')
+    const [value, setValue] = React.useState('')
   const [count, setCount] = React.useState(0)
   const ref = React.useRef<HTMLTextAreaElement | null>(null)
 

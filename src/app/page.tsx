@@ -57,7 +57,7 @@ export default async function HomePage() {
         <h2 className="text-xl font-semibold">Latest additions</h2>
         {(!latest || latest.length === 0) ? (
           <div className="rounded-2xl border bg-white p-8 text-center text-gray-600">
-            Nothing yet — <a href="/submit" className="text-blue-600 underline">submit one</a>!
+            Nothing yet — <Link href="/submit" className="text-blue-600 underline">submit one</Link>!
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">

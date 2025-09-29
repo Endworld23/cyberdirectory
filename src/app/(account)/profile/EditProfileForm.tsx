@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link'
 import * as React from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { updateProfile } from './actions';
@@ -98,7 +99,7 @@ export default function EditProfileForm({ initial }: Props) {
           .abortSignal(ctrl.signal);
         if (error) { setAvailability('error'); return; }
         setAvailability(count && count > 0 ? 'taken' : 'available');
-      } catch (_e) {
+      } catch {
         if (!ctrl.signal.aborted) setAvailability('error');
       }
     }, 400);
@@ -236,7 +237,7 @@ export default function EditProfileForm({ initial }: Props) {
           >
             {pending ? 'Saving…' : 'Save changes'}
           </button>
-          <a href="/profile" className="text-sm text-gray-600 underline">Cancel</a>
+          <Link href="/profile" className="text-sm text-gray-600 underline">Cancel</Link>
         </div>
       </fieldset>
     </form>

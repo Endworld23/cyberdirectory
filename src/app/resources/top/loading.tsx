@@ -1,4 +1,3 @@
-toggleSaveAction
 // src/app/resources/top/loading.tsx
 export default function Loading() {
   return (

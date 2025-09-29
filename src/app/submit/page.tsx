@@ -1,6 +1,6 @@
-/* cspell:ignore supabase */
 'use client';
 
+/* cspell:ignore supabase */
 import { useEffect, useMemo, useState } from 'react';
 import { createClientBrowser } from '@/lib/supabase-browser';
 

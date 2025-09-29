@@ -1,6 +1,7 @@
+'use client';
 
+import Link from 'next/link'
 
-'use client'
 
 export default function Error({
   error,
@@ -32,18 +33,18 @@ export default function Error({
           >
             Try again
           </button>
-          <a
+          <Link
             href="/resources"
             className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
           >
             Directory
-          </a>
-          <a
+          </Link>
+          <Link
             href="/"
             className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
           >
             Home
-          </a>
+          </Link>
         </div>
       </div>
     </main>

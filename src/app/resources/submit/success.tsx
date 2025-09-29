@@ -1,3 +1,4 @@
+import Link from 'next/link'
 export default function SubmissionSuccessPage() {
   return (
     <main className="mx-auto max-w-3xl p-6">
@@ -8,18 +9,18 @@ export default function SubmissionSuccessPage() {
         </p>
 
         <div className="mt-4 flex items-center gap-3">
-          <a
+          <Link
             href="/resources/trending"
             className="rounded-xl bg-black px-4 py-2 text-white hover:bg-gray-900"
           >
             View trending resources
-          </a>
-          <a
+          </Link>
+          <Link
             href="/resources/submit"
             className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
           >
             Submit another
-          </a>
+          </Link>
         </div>
       </div>
     </main>

@@ -116,11 +116,11 @@ export default async function TagPage(props: { params: { slug: string }; searchP
             <h1 className="text-2xl font-semibold">#{tag.name ?? tag.slug}</h1>
             <p className="text-sm text-gray-600">Browse resources tagged with this topic.</p>
             <nav className="mt-1 text-xs text-gray-600">
-              <a className="underline mr-3" href="/resources">All</a>
-              <a className="underline mr-3" href="/resources/trending">Trending</a>
-              <a className="underline mr-3" href="/resources/top">All‑time</a>
-              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-              <a className="underline" href="/resources/top/monthly">Monthly</a>
+              <Link className="underline mr-3" href="/resources">All</Link>
+              <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+              <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+              <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+              <Link className="underline" href="/resources/top/monthly">Monthly</Link>
             </nav>
           </div>
           <div className="text-sm text-gray-600">0 items</div>
@@ -129,8 +129,8 @@ export default async function TagPage(props: { params: { slug: string }; searchP
           <EmptyState
             title="No resources with this tag"
             message="Check back soon, or explore other areas of the directory."
-            primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</a>}
-            secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</Link>}
+            secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
           />
         </div>
       </main>
@@ -213,11 +213,11 @@ export default async function TagPage(props: { params: { slug: string }; searchP
           <h1 className="text-2xl font-semibold">#{tag.name ?? tag.slug}</h1>
           <p className="text-sm text-gray-600">Browse resources tagged with this topic.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources">All</a>
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-            <a className="underline" href="/resources/top/monthly">Monthly</a>
+            <Link className="underline mr-3" href="/resources">All</Link>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+            <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
         </div>
         <form action={`/resources/tags/${slug}`} className="flex items-center gap-2">
@@ -243,8 +243,8 @@ export default async function TagPage(props: { params: { slug: string }; searchP
           <EmptyState
             title="No resources with this tag"
             message="Check back soon, or explore other areas of the directory."
-            primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</a>}
-            secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</Link>}
+            secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
           />
         </div>
       ) : (
@@ -262,13 +262,13 @@ export default async function TagPage(props: { params: { slug: string }; searchP
                   created_at={r.created_at ?? undefined}
                   stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                   actions={
-                    <a
+                    <Link
                       href={`/go/${r.id}`}
                       rel="noreferrer"
                       className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
                     >
                       Visit
-                    </a>
+                    </Link>
                   }
                 />
               </li>
@@ -278,15 +278,15 @@ export default async function TagPage(props: { params: { slug: string }; searchP
           {/* Pager */}
           {pageCount > 1 && (
             <nav className="mt-6 flex items-center gap-2">
-              <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+              <Link href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm">
                 Prev
-              </a>
+              </Link>
               <span className="text-sm text-gray-600">
                 Page {page} / {pageCount}
               </span>
-              <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
+              <Link href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm">
                 Next
-              </a>
+              </Link>
             </nav>
           )}
         </>

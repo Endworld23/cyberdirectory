@@ -48,7 +48,13 @@ type ActivityItem =
 // ---------------------------------------------
 // Page
 // ---------------------------------------------
-export default async function PublicProfilePage({ params }: { params: { handle: string } }) {
+export default async function PublicProfilePage({
+  params,
+  searchParams: _searchParams,
+}: {
+  params: { handle: string };
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const handle = params.handle
   const s = await createClientServer()
 
@@ -144,7 +150,7 @@ export default async function PublicProfilePage({ params }: { params: { handle: 
           <EmptyState
             title="No public activity"
             message="Submissions, votes, and comments will appear here."
-            primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</a>}
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</Link>}
           />
         ) : (
           <ul className="space-y-3">

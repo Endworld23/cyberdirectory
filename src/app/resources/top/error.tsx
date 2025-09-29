@@ -1,5 +1,6 @@
-'use client'
+'use client';
 
+import Link from 'next/link'
 export default function Error({
   error,
   reset,
@@ -30,12 +31,12 @@ export default function Error({
           >
             Try again
           </button>
-          <a
+          <Link
             href="/resources/trending"
             className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
           >
             Back to trending
-          </a>
+          </Link>
         </div>
       </div>
     </main>

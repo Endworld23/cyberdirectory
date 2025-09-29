@@ -2,15 +2,15 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
+import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import VoteWidget from '@/components/VoteWidget'
 import SaveButton from '@/components/SaveButton'
-import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-import EmptyState from '@/components/EmptyState'
 import Comments from '@/components/resources/Comments'
-import RelatedGrid from '@/components/resources/RelatedGrid'
+import { createCommentAction, deleteCommentAction } from '@/app/resources/[slug]/actions'
+import RelatedGrid, { type RelatedItem } from '@/components/resources/RelatedGrid'
 import CopyButton from '@/components/CopyButton'
 
 export const dynamic = 'force-dynamic'
@@ -32,14 +32,8 @@ type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
 type Params = { slug: string }
 
-type RelatedRow = {
-  id: string
-  slug: string
-  title: string
-  description: string | null
-  logo_url: string | null
-  pricing: ResourceRow['pricing'] | null
-}
+type ResourceLite = { id: string; title: string; slug: string }
+type RelatedRow = (RelatedItem & { pricing: ResourceRow['pricing'] | null })
 
 // Small helper
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
@@ -58,7 +52,7 @@ export async function generateMetadata(
     .eq('is_approved', true)
     .single()
 
-  const title = data?.title ? `${data.title} — Cyber Directory` : 'Resource — Cyber Directory'
+  const title = data?.title ? `${data.title} - Cyber Directory` : 'Resource - Cyber Directory'
   const description = data?.description ?? 'Explore cybersecurity resources curated by the community.'
   const ogImage = data?.logo_url || `${site}/og-default.png`
 
@@ -83,36 +77,18 @@ export async function generateMetadata(
 }
 
 /* ------------------ Page ------------------ */
-export async function createCommentAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const slug = String(formData.get('slug') ?? '')
-  const body = String(formData.get('body') ?? '').trim()
 
-  if (!user) return redirect(`/login?next=/resources/${slug || ''}`)
-  if (!resourceId || body.length < 2) return
 
-  await s.from('comments').insert({ resource_id: resourceId, user_id: user.id, body })
-  revalidatePath(`/resources/${slug}`)
-}
-
-export async function deleteOwnCommentAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  const slug = String(formData.get('slug') ?? '')
-  const commentId = String(formData.get('commentId') ?? '')
-  if (!user || !commentId) return
-  await s.from('comments').delete().eq('id', commentId).eq('user_id', user.id)
-  revalidatePath(`/resources/${slug}`)
-}
-
-export default async function ResourceBySlug({ params }: { params: Params }) {
+export default async function ResourceBySlug({
+  params,
+  searchParams: _searchParams,
+}: {
+  params: Params;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const { slug } = params
+  const jar = cookies() as unknown as ReadonlyRequestCookies;
+  const theme = jar.get('theme')?.value === 'dark' ? 'dark' : 'light';
   const s = await createClientServer()
 
   // Load resource
@@ -228,7 +204,7 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
   } catch {}
 
   return (
-    <main className="mx-auto max-w-5xl space-y-8 p-6">
+    <main data-theme={theme} className="mx-auto max-w-5xl space-y-8 p-6">
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-3">
@@ -321,22 +297,25 @@ export default async function ResourceBySlug({ params }: { params: Params }) {
         slug={r.slug}
         comments={comments ?? []}
         createAction={createCommentAction}
-        deleteAction={deleteOwnCommentAction}
+        deleteAction={deleteCommentAction}
       />
 
       {/* Related */}
       <RelatedGrid
-        items={related as any}
-        renderActions={(x) => (
-          <a
-            href={`/go/${x.id}`}
-            rel="noreferrer"
-            className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-            title="Visit site"
-          >
-            Visit
-          </a>
-        )}
+        items={related}
+        renderActions={(item) => {
+          const resource: ResourceLite = { id: item.id, title: item.title, slug: item.slug }
+          return (
+            <a
+              href={`/go/${resource.id}`}
+              rel="noreferrer"
+              className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
+              title="Visit site"
+            >
+              Visit
+            </a>
+          )
+        }}
       />
 
       {/* JSON-LD */}

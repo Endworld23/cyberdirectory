@@ -1,11 +1,13 @@
+import Link from 'next/link'
 // src/app/resources/top/monthly/page.tsx
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+
+import type { Metadata } from 'next'
+import { toggleVoteAction, toggleSaveAction } from '@/app/actions/resourceInteractions'
 import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
-import type { Metadata } from 'next'
+
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
@@ -25,39 +27,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 type SearchParams = { size?: string }
 
-export async function toggleSaveAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const saved = String(formData.get('saved') ?? '') === 'true'
-  if (!resourceId) return
-  if (saved) {
-    await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
-  }
-  revalidatePath('/resources/top/monthly')
-}
-
-export async function voteAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const hasVoted = String(formData.get('hasVoted') ?? '') === 'true'
-  if (!resourceId) return
-  if (hasVoted) {
-    await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
-  }
-  revalidatePath('/resources/top/monthly')
-}
 
 export default async function TopMonthlyPage({ searchParams }: { searchParams?: SearchParams }) {
   const s = await createClientServer()
@@ -78,9 +47,9 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
             <h1 className="text-2xl font-semibold">Top — Monthly</h1>
             <p className="text-sm text-gray-600">Most voted resources in the last 30 days.</p>
             <nav className="mt-1 text-xs text-gray-600">
-              <a className="underline mr-3" href="/resources/trending">Trending</a>
-              <a className="underline mr-3" href="/resources/top">All‑time</a>
-              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+              <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+              <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+              <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
               <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
             </nav>
           </div>
@@ -88,7 +57,7 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
         <EmptyState
           title="Failed to load monthly top"
           message={vErr.message || 'Please refresh the page or try again later.'}
-          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+          primaryAction={<Link href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</Link>}
         />
       </main>
     )
@@ -111,9 +80,9 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
           <h1 className="text-2xl font-semibold">Top — Monthly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
             <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
           </nav>
         </header>
@@ -121,10 +90,10 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
           title="No monthly top yet"
           message="When resources receive votes this month, they'll appear here."
           primaryAction={
-            <a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</a>
+            <Link href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</Link>
           }
           secondaryActions={
-            <a href="/resources/top" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View all‑time</a>
+            <Link href="/resources/top" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View all‑time</Link>
           }
         />
       </main>
@@ -145,9 +114,9 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
             <h1 className="text-2xl font-semibold">Top — Monthly</h1>
             <p className="text-sm text-gray-600">Most voted resources in the last 30 days.</p>
             <nav className="mt-1 text-xs text-gray-600">
-              <a className="underline mr-3" href="/resources/trending">Trending</a>
-              <a className="underline mr-3" href="/resources/top">All‑time</a>
-              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+              <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+              <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+              <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
               <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
             </nav>
           </div>
@@ -155,7 +124,7 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
         <EmptyState
           title="Failed to load monthly top"
           message={error.message || 'Please refresh the page or try again later.'}
-          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+          primaryAction={<Link href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</Link>}
         />
       </main>
     )
@@ -199,9 +168,9 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
           <h1 className="text-2xl font-semibold">Top — Monthly</h1>
           <p className="text-sm text-gray-600">Most votes in the last 30 days.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
             <span aria-current="page" className="font-medium text-gray-900">Monthly</span>
           </nav>
         </div>
@@ -239,8 +208,10 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
               stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
               actions={
                 <div className="flex items-center gap-2">
-                  <form action={voteAction}>
+                  <form action={toggleVoteAction}>
                     <input type="hidden" name="resourceId" value={r.id} />
+                    <input type="hidden" name="slug" value={r.slug} />
+                    <input type="hidden" name="revalidate" value="/resources/top/monthly" />
                     <input type="hidden" name="hasVoted" value={String(hasVoted)} />
                     <PendingButton
                       className={
@@ -255,6 +226,8 @@ export default async function TopMonthlyPage({ searchParams }: { searchParams?: 
                   </form>
                   <form action={toggleSaveAction}>
                     <input type="hidden" name="resourceId" value={r.id} />
+                    <input type="hidden" name="slug" value={r.slug} />
+                    <input type="hidden" name="revalidate" value="/resources/top/monthly" />
                     <input type="hidden" name="saved" value={String(hasSaved)} />
                     <PendingButton
                       className={

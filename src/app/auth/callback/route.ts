@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
 import { createServerClient } from '@supabase/ssr'
+
+type CookieRecord = {
+  name: string;
+  value: string;
+  path?: string;
+  maxAge?: number;
+  domain?: string;
+  sameSite?: boolean | 'lax' | 'strict' | 'none';
+  secure?: boolean;
+  httpOnly?: boolean;
+};
 
 export const dynamic = 'force-dynamic'
 
@@ -16,8 +28,7 @@ export async function GET(req: Request) {
 
   try {
     if (code) {
-      // In your project, cookies() is async → await it
-      const cookieStore = await cookies()
+      const cookieStore = cookies() as unknown as ReadonlyRequestCookies;
 
       const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,14 +36,14 @@ export async function GET(req: Request) {
         {
           cookies: {
             getAll() {
-              return cookieStore.getAll().map(({ name, value }) => ({
-                name: name as string,
-                value: value as string,
-              }))
+              const entries = cookieStore.getAll();
+              return entries.map(({ name, value }): { name: string; value: string } => ({ name: String(name), value: String(value) }));
             },
             setAll(cookiesToSet) {
-              for (const { name, value, options } of cookiesToSet) {
-                cookieStore.set({ name: name as string, value: value as string, ...options })
+              type SettableCookieStore = ReadonlyRequestCookies & { set: (options: CookieRecord) => void };
+              const writable = cookieStore as unknown as SettableCookieStore;
+              for (const rawCookie of cookiesToSet as CookieRecord[]) {
+                writable.set({ ...rawCookie, name: String(rawCookie.name), value: String(rawCookie.value) });
               }
             },
           },

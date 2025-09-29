@@ -1,50 +1,35 @@
-test('should first', () => { second })
-'use client'
+'use client';
+
+import { useEffect } from 'react';
+import Link from 'next/link';
 
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string }
-  reset: () => void
+  error: Error & { digest?: string };
+  reset: () => void;
 }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
-        <h1 className="text-xl font-semibold text-red-800">Something went wrong</h1>
-        <p className="mt-1 text-sm text-red-700">We couldn’t load this profile. You can try again or return to the directory.</p>
-
-        {error?.message && (
-          <details className="mt-3 text-xs text-red-700/90">
-            <summary className="cursor-pointer">Show error details</summary>
-            <pre className="mt-2 whitespace-pre-wrap break-words">{error.message}</pre>
-            {error.digest && (
-              <div className="mt-2 opacity-75">Digest: <code>{error.digest}</code></div>
-            )}
-          </details>
-        )}
-
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={() => reset()}
-            className="rounded-xl bg-black px-4 py-2 text-white hover:bg-gray-900"
-          >
-            Try again
-          </button>
-          <a
-            href="/resources"
-            className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            Directory
-          </a>
-          <a
-            href="/"
-            className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            Home
-          </a>
-        </div>
+    <div className="space-y-3 p-6 text-sm">
+      <h2 className="text-lg font-semibold text-gray-900">Something went wrong.</h2>
+      <p className="text-gray-600">Try again, or head back to the public profile list.</p>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded-md bg-black px-3 py-1.5 text-white hover:bg-gray-900"
+        >
+          Try again
+        </button>
+        <Link href="/u" className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50">
+          Browse profiles
+        </Link>
       </div>
-    </main>
-  )
+    </div>
+  );
 }

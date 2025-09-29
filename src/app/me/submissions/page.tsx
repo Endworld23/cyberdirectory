@@ -62,7 +62,7 @@ export default async function MySubmissionsPage() {
         <EmptyState
           title="Failed to load submissions"
           message={error.message || 'Please refresh the page or try again later.'}
-          primaryAction={<a href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</a>}
+          primaryAction={<Link href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</Link>}
         />
       </main>
     )
@@ -86,8 +86,8 @@ export default async function MySubmissionsPage() {
         <EmptyState
           title="No submissions yet"
           message="Submit your first resource to start tracking reviews here."
-          primaryAction={<a href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</a>}
-          secondaryActions={<a href="/resources" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Browse directory</a>}
+          primaryAction={<Link href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</Link>}
+          secondaryActions={<Link href="/resources" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">Browse directory</Link>}
         />
       ) : (
         <ul className="space-y-3">

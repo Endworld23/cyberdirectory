@@ -4,6 +4,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { createClientServer } from '@/lib/supabase-server';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 type ActionState = { error?: string } | undefined;
 
@@ -75,13 +76,16 @@ export async function updateProfile(
 
     if (error) {
       // 23505 = unique_violation (e.g., username taken)
-      if ((error as any).code === '23505') {
+      if (error && (error as PostgrestError).code === '23505') {
         return { error: 'That username is already taken.' };
       }
       return { error: error.message };
     }
-  } catch (e: any) {
-    return { error: e?.message || 'Could not update your profile right now.' };
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      return { error: err.message || 'Could not update your profile right now.' };
+    }
+    return { error: 'Could not update your profile right now.' };
   }
 
   // Revalidate private profile page always

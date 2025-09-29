@@ -42,15 +42,15 @@ export default async function TrendingPage() {
           <p className="text-gray-600">Top resources by outbound clicks in the last 7 days.</p>
           <nav className="mt-2 text-xs text-gray-600">
             <span aria-current="page" className="mr-3 font-medium text-gray-900">Trending</span>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-            <a className="underline" href="/resources/top/monthly">Monthly</a>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+            <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
         </header>
         <EmptyState
           title="Failed to load trending"
           message="Please refresh the page or try again later."
-          primaryAction={<a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>}
+          primaryAction={<Link href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</Link>}
         />
       </main>
     )
@@ -63,9 +63,9 @@ export default async function TrendingPage() {
         <p className="text-gray-600">Top resources by outbound clicks in the last 7 days.</p>
         <nav className="mt-2 text-xs text-gray-600">
           <span aria-current="page" className="mr-3 font-medium text-gray-900">Trending</span>
-          <a className="underline mr-3" href="/resources/top">All‑time</a>
-          <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-          <a className="underline" href="/resources/top/monthly">Monthly</a>
+          <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+          <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+          <Link className="underline" href="/resources/top/monthly">Monthly</Link>
         </nav>
       </header>
 
@@ -74,7 +74,7 @@ export default async function TrendingPage() {
           title="No trending data yet"
           message="As people click outbound links, trending resources will appear here."
           primaryAction={
-            <a href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</a>
+            <Link href="/resources/top" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View all‑time top</Link>
           }
         />
       ) : (

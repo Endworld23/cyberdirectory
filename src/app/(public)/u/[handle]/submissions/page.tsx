@@ -106,8 +106,8 @@ export default async function PublicProfileSubmissionsPage({ params }: { params:
         <EmptyState
           title="No submissions yet"
           message="When this user submits resources, they will appear here."
-          primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse directory</a>}
-          secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+          primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse directory</Link>}
+          secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
         />
       ) : (
         <ul className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

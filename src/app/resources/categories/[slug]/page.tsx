@@ -122,11 +122,11 @@ export default async function CategoryPage({ params, searchParams }: { params: {
           <h1 className="text-2xl font-semibold">{category.name ?? category.slug}</h1>
           <p className="text-sm text-gray-600">Browse resources in this category.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources">All</a>
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-            <a className="underline" href="/resources/top/monthly">Monthly</a>
+            <Link className="underline mr-3" href="/resources">All</Link>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+            <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
           <form className="mt-3 flex flex-wrap items-end gap-2 text-sm" method="get">
             <div>
@@ -159,8 +159,8 @@ export default async function CategoryPage({ params, searchParams }: { params: {
           <EmptyState
             title="No resources in this category"
             message="Check back soon, or explore other areas of the directory."
-            primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</a>}
-            secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+            primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse all</Link>}
+            secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
           />
         </div>
       ) : (
@@ -178,13 +178,13 @@ export default async function CategoryPage({ params, searchParams }: { params: {
                   created_at={r.created_at ?? undefined}
                   stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                   actions={
-                    <a
+                    <Link
                       href={`/go/${r.id}`}
                       rel="noreferrer"
                       className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
                     >
                       Visit
-                    </a>
+                    </Link>
                   }
                 />
               </li>

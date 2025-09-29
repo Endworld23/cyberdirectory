@@ -5,7 +5,7 @@ import PendingButton from '@/components/PendingButton'
 import { submitResourceAction, fetchUrlMetadataAction, uploadLogoAction } from '@/app/resources/submit/actions'
 import { useRouter } from 'next/navigation'
 import { submissionSchema } from '@/lib/validation/submission'
-import { toSlug } from '@/lib/slug'
+import { slugify } from '@/lib/slug'
 
 export type SimpleOption = { id: string; name: string; slug: string }
 
@@ -30,7 +30,7 @@ export default function SubmissionForm({
 
   // validation
   const [errors, setErrors] = React.useState<Record<string, string>>({})
-  const derivedSlug = React.useMemo(() => (title ? toSlug(title) : ''), [title])
+  const derivedSlug = React.useMemo(() => (title ? slugify(title) : ''), [title])
 
   const [metaLoading, setMetaLoading] = React.useState(false)
   const [metaError, setMetaError] = React.useState<string | null>(null)
@@ -322,7 +322,6 @@ export default function SubmissionForm({
           className="rounded-xl bg-black px-4 py-2 text-white"
           pendingText="Submitting…"
           title="Submit resource"
-          disabled={hasErrors || uploading || metaLoading}
         >
           Submit
         </PendingButton>

@@ -1,7 +1,7 @@
-// src/app/resources/page.tsx
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+import Link from 'next/link'
+import type { Metadata } from 'next'
 import { createClientServer } from '@/lib/supabase-server'
+import { toggleVoteAction, toggleSaveAction } from '@/app/actions/resourceInteractions'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
@@ -9,11 +9,10 @@ import ResourceFilters from '@/components/filters/ResourceFilters'
 
 export const dynamic = 'force-dynamic'
 
-import type { Metadata } from 'next'
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export async function generateMetadata(): Promise<Metadata> {
-  const title = 'All Resources — Cyber Directory'
+  const title = 'All Resources â€” Cyber Directory'
   const description = 'Browse the full directory of submitted cybersecurity resources.'
   const canonical = '/resources'
   return {
@@ -33,51 +32,29 @@ type SearchParams = {
   sort?: string
 }
 
-export async function toggleSaveAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
-
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const saved = String(formData.get('saved') ?? '') === 'true'
-  if (!resourceId) return
-
-  if (saved) {
-    await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
+const getParam = (value: string | string[] | undefined): string => {
+  if (Array.isArray(value)) {
+    return value[0] ?? '';
   }
-  revalidatePath('/resources')
-}
+  return value ?? '';
+};
 
-export async function voteAction(formData: FormData) {
-  'use server'
+
+export default async function ResourcesPage({
+  params: _params,
+  searchParams,
+}: {
+  params: Record<string, string | undefined>;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
 
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const hasVoted = String(formData.get('hasVoted') ?? '') === 'true'
-  if (!resourceId) return
-
-  if (hasVoted) {
-    await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
-  }
-  revalidatePath('/resources')
-}
-
-export default async function ResourcesPage({ searchParams }: { searchParams?: SearchParams }) {
-  const s = await createClientServer()
-  const sizeRaw = Number((searchParams?.size ?? '10').trim())
+  const sizeParam = getParam(searchParams.size) || '10'
+  const sizeRaw = Number(sizeParam.trim())
   const size = [5, 10, 25].includes(sizeRaw) ? sizeRaw : 10
 
-  const qParam = (searchParams?.q ?? '').trim()
-  const sort = (searchParams?.sort ?? '').trim() || 'new'
+  const qParam = getParam(searchParams.q).trim()
+  const sort = getParam(searchParams.sort).trim() || 'new'
 
   // Choose the appropriate view based on sort
   const baseTable = sort === 'trending' ? 'resource_trending' : 'resource_public_stats'
@@ -88,8 +65,9 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
     .eq('is_approved', true)
 
   // Optional: filter by category slug
-  if ((searchParams?.category ?? '').trim()) {
-    const catSlug = (searchParams?.category ?? '').trim()
+  const categorySlug = getParam(searchParams.category).trim()
+  if (categorySlug) {
+    const catSlug = categorySlug
     const { data: cat } = await s.from('categories').select('id,slug').ilike('slug', catSlug).maybeSingle()
     if (cat?.id) {
       query = query.eq('category_id', cat.id)
@@ -97,12 +75,12 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
   }
 
   // Optional: filter by tag slug (resolve resource_ids via join table)
-  if ((searchParams?.tag ?? '').trim()) {
-    const tagSlug = (searchParams?.tag ?? '').trim()
+  const tagSlug = getParam(searchParams.tag).trim()
+  if (tagSlug) {
     const { data: tag } = await s.from('tags').select('id,slug').ilike('slug', tagSlug).maybeSingle()
     if (tag?.id) {
       const { data: links } = await s.from('resource_tags').select('resource_id').eq('tag_id', tag.id)
-      const ids = (links ?? []).map((r: any) => r.resource_id)
+      const ids = (links ?? []).map((link) => link.resource_id as string)
       if (ids.length > 0) {
         query = query.in('id', ids)
       } else {
@@ -176,8 +154,8 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
     const u = new URLSearchParams()
     if (n !== 10) u.set('size', String(n))
     if (qParam) u.set('q', qParam)
-    if ((searchParams?.category ?? '').trim()) u.set('category', (searchParams?.category ?? '').trim())
-    if ((searchParams?.tag ?? '').trim()) u.set('tag', (searchParams?.tag ?? '').trim())
+    if (categorySlug) u.set('category', categorySlug)
+    if (tagSlug) u.set('tag', tagSlug)
     if (sort && sort !== 'new') u.set('sort', sort)
     const qs = u.toString()
     return qs ? `/resources?${qs}` : '/resources'
@@ -191,10 +169,10 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
           <p className="text-sm text-gray-600">Browse the full directory of submitted resources.</p>
           <nav className="mt-1 text-xs text-gray-600">
             <span aria-current="page" className="mr-3 font-medium text-gray-900">All</span>
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
-            <a className="underline mr-3" href="/resources/top">All‑time</a>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-            <a className="underline" href="/resources/top/monthly">Monthly</a>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
+            <Link className="underline mr-3" href="/resources/top">Allâ€‘time</Link>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+            <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
         </div>
         <div className="flex items-center gap-2">
@@ -215,10 +193,10 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
       </header>
       <div className="mt-4">
         <ResourceFilters
-          initialQ={searchParams?.q as string | undefined}
-          initialCategory={searchParams?.category as string | undefined}
-          initialTag={searchParams?.tag as string | undefined}
-          initialSort={(searchParams?.sort as string | undefined) || 'new'}
+          initialQ={getParam(searchParams.q) || undefined}
+          initialCategory={getParam(searchParams.category) || undefined}
+          initialTag={getParam(searchParams.tag) || undefined}
+          initialSort={sort}
         />
       </div>
 
@@ -226,8 +204,8 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
         <EmptyState
           title="No resources yet"
           message="Be the first to submit a resource to the directory."
-          primaryAction={<a href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</a>}
-          secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+          primaryAction={<Link href="/resources/submit" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Submit a resource</Link>}
+          secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
         />
       ) : (
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -247,32 +225,36 @@ export default async function ResourcesPage({ searchParams }: { searchParams?: S
                 stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                 actions={
                   <div className="flex items-center gap-2">
-                    <form action={voteAction}>
+                    <form action={toggleVoteAction}>
                       <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="slug" value={r.slug} />
+                      <input type="hidden" name="revalidate" value="/resources" />
                       <input type="hidden" name="hasVoted" value={String(hasVoted)} />
                       <PendingButton
                         className={
                           'rounded-md border px-2 py-1 text-xs ' +
                           (hasVoted ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
                         }
-                        pendingText={hasVoted ? 'Removing…' : 'Voting…'}
+                        pendingText={hasVoted ? 'Removingâ€¦' : 'Votingâ€¦'}
                         title={hasVoted ? 'Remove vote' : 'Vote for this resource'}
                       >
-                        ▲ {hasVoted ? 'Voted' : 'Vote'}
+                        â–² {hasVoted ? 'Voted' : 'Vote'}
                       </PendingButton>
                     </form>
                     <form action={toggleSaveAction}>
                       <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="slug" value={r.slug} />
+                      <input type="hidden" name="revalidate" value="/resources" />
                       <input type="hidden" name="saved" value={String(hasSaved)} />
                       <PendingButton
                         className={
                           'rounded-md border px-2 py-1 text-xs ' +
                           (hasSaved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
                         }
-                        pendingText={hasSaved ? 'Removing…' : 'Saving…'}
+                        pendingText={hasSaved ? 'Removingâ€¦' : 'Savingâ€¦'}
                         title={hasSaved ? 'Remove from saves' : 'Save this resource'}
                       >
-                        ☆ {hasSaved ? 'Saved' : 'Save'}
+                        â˜† {hasSaved ? 'Saved' : 'Save'}
                       </PendingButton>
                     </form>
                   </div>

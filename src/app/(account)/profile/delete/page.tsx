@@ -1,9 +1,9 @@
 // app/(account)/profile/delete/page.tsx
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 import { createClientServer } from '@/lib/supabase-server';
 import AccountNav from '../_components/AccountNav';
+import { deleteAccountAction } from '@/app/(account)/profile/delete/actions';
 
 export const metadata = {
   title: 'Delete account · CyberDirectory',
@@ -20,34 +20,14 @@ async function requireUser() {
   return { sb, user: data.user };
 }
 
-// ---- Server action ----
-export async function deleteAccountAction(formData: FormData): Promise<void> {
-  'use server';
-  const confirmed = formData.get('confirm') === 'on';
-  if (!confirmed) {
-    // soft fail back to page with a message
-    redirect('/profile/delete?error=confirm');
-  }
-
-  const { sb, user } = await requireUser();
-
-  const { error } = await sb
-    .from('profiles')
-    .update({ is_deleted: true, updated_at: new Date().toISOString() })
-    .eq('id', user.id);
-
-  if (error) {
-    // Surface a generic error via redirect to avoid leaking details
-    redirect('/profile/delete?error=unknown');
-  }
-
-  await sb.auth.signOut();
-  revalidatePath('/profile');
-  redirect('/goodbye');
-}
-
 // ---- Page ----
-export default async function DeleteAccountPage({ searchParams }: { searchParams?: { error?: string } }) {
+export default async function DeleteAccountPage({
+  params: _params,
+  searchParams,
+}: {
+  params: Record<string, string | undefined>;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const { sb, user } = await requireUser();
 
   const { data: profile, error: pErr } = await sb
@@ -59,7 +39,8 @@ export default async function DeleteAccountPage({ searchParams }: { searchParams
   if (pErr) throw new Error(pErr.message);
   if (profile?.is_deleted) redirect('/goodbye');
 
-  const error = searchParams?.error;
+  const errorParam = searchParams?.error;
+  const error = Array.isArray(errorParam) ? errorParam[0] : errorParam;
 
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-6">
@@ -83,7 +64,7 @@ export default async function DeleteAccountPage({ searchParams }: { searchParams
 
       <div className="rounded-lg border p-4 sm:p-6 shadow-sm bg-white space-y-4">
         <p>
-          You're about to permanently delete the account <span className="font-medium">{profile?.display_name || user.email}</span>.
+          You’re about to permanently delete the account <span className="font-medium">{profile?.display_name || user.email}</span>.
         </p>
         <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">
           <li>Your profile will be marked as deleted and you will be signed out immediately.</li>

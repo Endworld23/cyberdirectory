@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
+import { cookies } from 'next/headers';
+import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
+import { resendVerificationAction } from '@/app/(account)/profile/edit/actions';
 import EditProfileForm from '../EditProfileForm';
 
 import Link from 'next/link';
-import { revalidatePath } from 'next/cache';
 import AccountNav from '../_components/AccountNav';
-import { cookies } from 'next/headers';
 
 import type { Metadata } from 'next'
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
@@ -25,34 +26,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const dynamic = 'force-dynamic';
-
-async function resendVerificationAction() {
-  'use server';
-  const sb = await createClientServer();
-  const c = await cookies();
-
-  // Simple cooldown: 60 seconds between sends
-  const last = c.get('cd_resend_ts')?.value;
-  const now = Date.now();
-  const lastMs = last ? Number(last) : 0;
-  if (lastMs && now - lastMs < 60_000) {
-    // Too soon; just revalidate so UI updates remaining time
-    revalidatePath('/account/profile/edit');
-    return;
-  }
-
-  const { data } = await sb.auth.getUser();
-  const email = data?.user?.email;
-  if (!email) return;
-  try {
-    await sb.auth.resend({ type: 'signup', email });
-    // store send timestamp (httpOnly cookie)
-    c.set('cd_resend_ts', String(now), { httpOnly: true, sameSite: 'lax', path: '/account/profile', maxAge: 60 });
-  } catch (_e) {
-    // swallow errors intentionally
-  }
-  revalidatePath('/account/profile/edit');
-}
 
 export default async function EditProfilePage() {
   // IMPORTANT: your createClientServer returns a Promise<SupabaseClient>
@@ -76,13 +49,16 @@ export default async function EditProfilePage() {
     redirect('/goodbye');
   }
 
-  const email = auth.user.email as string | null;
-  const emailConfirmedAt = (auth.user as any).email_confirmed_at as string | null | undefined;
+  const supabaseUser = auth.user;
+  const email = supabaseUser.email ?? null;
+  const userMeta = (supabaseUser.user_metadata ?? {}) as { email_confirmed_at?: string | null; email_verified?: boolean };
+  const emailConfirmedAt = (supabaseUser as { email_confirmed_at?: string | null }).email_confirmed_at ??
+    (userMeta.email_confirmed_at ?? (userMeta.email_verified ? new Date().toISOString() : null));
   const isVerified = Boolean(emailConfirmedAt);
 
   // Read resend cooldown from cookie
-  const c = await cookies();
-  const last = c.get('cd_resend_ts')?.value;
+  const cookieJar = cookies() as unknown as ReadonlyRequestCookies;
+  const last = cookieJar.get('cd_resend_ts')?.value;
   const now = Date.now();
   const lastMs = last ? Number(last) : 0;
   const remaining = lastMs ? Math.max(0, 60 - Math.floor((now - lastMs) / 1000)) : 0;

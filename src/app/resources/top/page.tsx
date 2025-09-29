@@ -1,12 +1,14 @@
+import Link from 'next/link'
 // src/app/resources/top/page.tsx
-import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+
+import type { Metadata } from 'next'
+import { toggleVoteAction, toggleSaveAction } from '@/app/actions/resourceInteractions'
 import { createClientServer } from '@/lib/supabase-server'
 import { ResourceCard } from '@/components/ResourceCard'
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
 
-import type { Metadata } from 'next'
+
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
@@ -26,39 +28,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 type SearchParams = { size?: string }
 
-export async function toggleSaveAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const saved = String(formData.get('saved') ?? '') === 'true'
-  if (!resourceId) return
-  if (saved) {
-    await s.from('saves').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('saves').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
-  }
-  revalidatePath('/resources/top')
-}
-
-export async function voteAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return redirect('/login')
-  const resourceId = String(formData.get('resourceId') ?? '')
-  const hasVoted = String(formData.get('hasVoted') ?? '') === 'true'
-  if (!resourceId) return
-  if (hasVoted) {
-    await s.from('votes').delete().eq('user_id', user.id).eq('resource_id', resourceId)
-  } else {
-    await s.from('votes').upsert({ user_id: user.id, resource_id: resourceId }, { onConflict: 'user_id,resource_id' })
-  }
-  revalidatePath('/resources/top')
-}
 
 export default async function TopAllTimePage({ searchParams }: { searchParams?: SearchParams }) {
   const s = await createClientServer()
@@ -81,17 +50,17 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
             <h1 className="text-2xl font-semibold">Top — All Time</h1>
             <p className="text-sm text-gray-600">Most voted resources overall.</p>
             <nav className="mt-1 text-xs text-gray-600">
-              <a className="underline mr-3" href="/resources/trending">Trending</a>
+              <Link className="underline mr-3" href="/resources/trending">Trending</Link>
               <span aria-current="page" className="mr-3 font-medium text-gray-900">All‑time</span>
-              <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-              <a className="underline" href="/resources/top/monthly">Monthly</a>
+              <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+              <Link className="underline" href="/resources/top/monthly">Monthly</Link>
             </nav>
           </div>
         </header>
         <EmptyState
           title="Failed to load top resources"
           message="Please refresh the page or try again later."
-          primaryAction={<a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</a>}
+          primaryAction={<Link href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">View trending</Link>}
         />
       </main>
     )
@@ -132,10 +101,10 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
           <h1 className="text-2xl font-semibold">Top — All Time</h1>
           <p className="text-sm text-gray-600">Most voted resources overall.</p>
           <nav className="mt-1 text-xs text-gray-600">
-            <a className="underline mr-3" href="/resources/trending">Trending</a>
+            <Link className="underline mr-3" href="/resources/trending">Trending</Link>
             <span aria-current="page" className="mr-3 font-medium text-gray-900">All‑time</span>
-            <a className="underline mr-3" href="/resources/top/weekly">Weekly</a>
-            <a className="underline" href="/resources/top/monthly">Monthly</a>
+            <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
+            <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
         </div>
         <div className="flex items-center gap-2">
@@ -161,9 +130,9 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
             title="No top resources yet"
             message="Approved resources will appear here once they receive votes."
             primaryAction={
-              <a href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">
+              <Link href="/resources/trending" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">
                 View trending
-              </a>
+              </Link>
             }
           />
         </div>
@@ -185,8 +154,10 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
                 stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                 actions={
                   <div className="flex items-center gap-2">
-                    <form action={voteAction}>
+                    <form action={toggleVoteAction}>
                       <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="slug" value={r.slug} />
+                      <input type="hidden" name="revalidate" value="/resources/top" />
                       <input type="hidden" name="hasVoted" value={String(hasVoted)} />
                       <PendingButton
                         className={
@@ -201,6 +172,8 @@ export default async function TopAllTimePage({ searchParams }: { searchParams?: 
                     </form>
                     <form action={toggleSaveAction}>
                       <input type="hidden" name="resourceId" value={r.id} />
+                      <input type="hidden" name="slug" value={r.slug} />
+                      <input type="hidden" name="revalidate" value="/resources/top" />
                       <input type="hidden" name="saved" value={String(hasSaved)} />
                       <PendingButton
                         className={

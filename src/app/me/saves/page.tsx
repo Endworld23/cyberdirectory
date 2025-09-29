@@ -3,8 +3,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
+import { toggleSaveAction } from '@/app/actions/resourceInteractions'
 import SaveButton from '@/components/SaveButton'
-import { revalidatePath } from 'next/cache'
 import EmptyState from '@/components/EmptyState'
 import type { Metadata } from 'next'
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
@@ -25,22 +25,6 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Server action: remove a save (progressive enhancement fallback to client SaveButton)
-export async function removeSaveAction(formData: FormData) {
-  'use server'
-  const s = await createClientServer()
-  const { data: auth } = await s.auth.getUser()
-  const user = auth?.user
-  if (!user) return
-  const resourceId = String(formData.get('resourceId') ?? '')
-  if (!resourceId) return
-  await s
-    .from('saves')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('resource_id', resourceId)
-  revalidatePath('/me/saves')
-}
-
 const PAGE_SIZE = 24
 
 type SearchParams = {
@@ -94,7 +78,7 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
         <EmptyState
           title="Failed to load saved resources"
           message={savesErr.message || 'Please refresh the page or try again later.'}
-          primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</a>}
+          primaryAction={<Link href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</Link>}
         />
       </main>
     )
@@ -114,8 +98,8 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
         <EmptyState
           title="No saved resources yet"
           message="Browse the directory and tap the save button to add items here."
-          primaryAction={<a href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</a>}
-          secondaryActions={<a href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</a>}
+          primaryAction={<Link href="/resources" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Browse resources</Link>}
+          secondaryActions={<Link href="/resources/trending" className="rounded-xl border px-3 py-1.5 text-sm hover:bg-gray-50">View trending</Link>}
         />
       </main>
     );
@@ -156,7 +140,7 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
         <EmptyState
           title="Failed to load saved resources"
           message={error.message || 'Please refresh the page or try again later.'}
-          primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</a>}
+          primaryAction={<Link href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Retry</Link>}
         />
       </main>
     )
@@ -175,7 +159,7 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
           <EmptyState
             title="No matches"
             message="Try a different search term or sort."
-            primaryAction={<a href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Clear filters</a>}
+            primaryAction={<Link href="/me/saves" className="rounded-xl bg-black px-3 py-1.5 text-white hover:bg-gray-900">Clear filters</Link>}
           />
         </div>
       )}
@@ -203,8 +187,11 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
               <div className="flex items-center gap-2">
                 <SaveButton resourceId={r.id} initialSaved={true} />
                 {/* Progressive enhancement: works without JS */}
-                <form action={removeSaveAction}>
+                <form action={toggleSaveAction}>
                   <input type="hidden" name="resourceId" value={r.id} />
+                  <input type="hidden" name="slug" value={r.slug} />
+                  <input type="hidden" name="revalidate" value="/me/saves" />
+                  <input type="hidden" name="saved" value="true" />
                   <button
                     className="rounded-md border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
                     title="Remove from saves"
@@ -285,7 +272,7 @@ function Header({ total, q, sort }: { total: number; q: string; sort: 'trending'
         </select>
         <button className="rounded-xl bg-black text-white px-3 py-2 text-sm">Apply</button>
         {q && (
-          <a href="/me/saves" className="rounded-xl border px-3 py-2 text-sm">Clear</a>
+          <Link href="/me/saves" className="rounded-xl border px-3 py-2 text-sm">Clear</Link>
         )}
       </form>
     </header>
@@ -311,15 +298,15 @@ function Pager({
   if (pageCount <= 1) return null
   return (
     <nav className="mt-6 flex items-center gap-2" aria-label="Pagination">
-      <a href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="prev noopener">
+      <Link href={mk(Math.max(1, page - 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="prev noopener">
         Prev
-      </a>
+      </Link>
       <span className="text-sm text-gray-600">
         Page {page} / {pageCount}
       </span>
-      <a href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="next noopener">
+      <Link href={mk(Math.min(pageCount, page + 1))} className="rounded-xl border px-3 py-1.5 text-sm" rel="next noopener">
         Next
-      </a>
+      </Link>
     </nav>
   )
 }

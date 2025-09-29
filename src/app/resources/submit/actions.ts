@@ -4,6 +4,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
+import { slugify } from '@/lib/slug'
 
 // --- helpers --------------------------------------------------------------
 function toSlug(input: string) {
@@ -16,7 +17,7 @@ function toSlug(input: string) {
 }
 
 async function ensureUniqueResourceSlug(supabase: any, base: string) {
-  let slug = toSlug(base) || 'resource'
+  let slug = slugify(base) || 'resource'
   let suffix = 0
   // Check against resources and submissions (in case you surface slugs there too)
   // Stop after a reasonable number of attempts

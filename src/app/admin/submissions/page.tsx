@@ -67,7 +67,13 @@ function Tab({ to, active }: { to: string; active: boolean }) {
 
 type SearchParams = { status?: string; page?: string; q?: string }
 
-export default async function AdminSubmissionsPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function AdminSubmissionsPage({
+  params: _params,
+  searchParams,
+}: {
+  params: Record<string, string | undefined>;
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const sp = (searchParams ?? {}) as SearchParams
 
   const s = await createClientServer()
