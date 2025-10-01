@@ -18,16 +18,19 @@ type PublicProfile = {
 }
 
 type ResourceLite = {
-  id?: string
+  id: string
   title: string
   slug: string
   logo_url?: string | null
   affiliate_url?: string | null
 }
 
-type SubmissionLite = ResourceLite & {
+type SubmissionLite = {
   id: string
+  slug: string
+  title: string
   created_at: string
+  logo_url?: string | null
   status?: 'pending' | 'approved' | 'rejected' | null
 }
 
@@ -39,25 +42,33 @@ type ReviewLite = {
   resource_id: string
 }
 
-type SubmissionRow = SubmissionLite
-
 type CommentRow = {
   id: string
   resource_id: string
   body: string | null
   created_at: string
-  resources: (ResourceLite & { logo_url: string | null }) | null
+  resources: {
+    id: string
+    slug: string
+    title: string
+    logo_url: string | null
+  } | null
 }
 
 type VoteRow = {
   id: string
   resource_id: string
   created_at: string
-  resources: (ResourceLite & { logo_url: string | null }) | null
+  resources: {
+    id: string
+    slug: string
+    title: string
+    logo_url: string | null
+  } | null
 }
 
 type ActivityItem =
-  | ({ kind: 'submission' } & SubmissionLite)
+  | (SubmissionLite & { kind: 'submission'; resource_id: string })
   | {
       kind: 'comment'
       id: string
@@ -103,12 +114,12 @@ function fmtDate(dt?: string | null) {
   }
 }
 
-export default async function PublicProfilePage({
+export default async function Page({
   params,
   searchParams,
 }: {
-  params: { handle: string }
-  searchParams: Record<string, string | string[] | undefined>
+  params: { handle: string };
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
   void searchParams
 
@@ -127,19 +138,19 @@ export default async function PublicProfilePage({
   const [submissionRes, commentRes, voteRes] = await Promise.all([
     supabase
       .from('resources')
-      .select<SubmissionRow>('id, slug, title, logo_url, created_at')
+      .select<SubmissionLite>('id, slug, title, logo_url, created_at')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('comments')
-      .select<CommentRow>('id, resource_id, body, created_at, resources!inner(slug, title, logo_url)')
+      .select<CommentRow>('id, resource_id, body, created_at, resources!inner(id, slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('votes')
-      .select<VoteRow>('id, resource_id, created_at, resources!inner(slug, title, logo_url)')
+      .select<VoteRow>('id, resource_id, created_at, resources!inner(id, slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
