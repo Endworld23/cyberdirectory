@@ -64,9 +64,10 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
     )
   }
 
+  const voteRowsTyped = (voteRows ?? []) as Array<{ resource_id: string }>
   const counts = new Map<string, number>()
-  for (const row of voteRows ?? []) {
-    const rid = (row as any).resource_id as string
+  for (const row of voteRowsTyped) {
+    const rid = row.resource_id
     counts.set(rid, (counts.get(rid) ?? 0) + 1)
   }
   const sortedIds = Array.from(counts.entries())
@@ -126,16 +127,18 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
 
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user ?? null
-  let votedIds = new Set<string>()
-  let savedIds = new Set<string>()
+  const votedIds = new Set<string>()
+  const savedIds = new Set<string>()
   if (user && rows.length > 0) {
     const ids = rows.map((r) => r.id)
     const [myVotes, mySaves] = await Promise.all([
       s.from('votes').select('resource_id').eq('user_id', user.id).in('resource_id', ids),
       s.from('saves').select('resource_id').eq('user_id', user.id).in('resource_id', ids),
     ])
-    for (const v of myVotes.data ?? []) votedIds.add((v as any).resource_id as string)
-    for (const sv of mySaves.data ?? []) savedIds.add((sv as any).resource_id as string)
+    const myVotesRows = (myVotes.data ?? []) as Array<{ resource_id: string }>
+    const mySavesRows = (mySaves.data ?? []) as Array<{ resource_id: string }>
+    for (const v of myVotesRows) votedIds.add(v.resource_id)
+    for (const sv of mySavesRows) savedIds.add(sv.resource_id)
   }
 
   const sizeHref = (n: number) => (n === 10 ? '/resources/top/weekly' : `/resources/top/weekly?size=${n}`)
@@ -216,7 +219,7 @@ export default async function TopWeeklyPage({ searchParams }: { searchParams?: S
                       pendingText={hasSaved ? 'Removing…' : 'Saving…'}
                       title={hasSaved ? 'Remove from saves' : 'Save this resource'}
                     >
-                      ☆ {hasSaved ? 'Saved' : 'Save'}
+                      ★ {hasSaved ? 'Saved' : 'Save'}
                     </PendingButton>
                   </form>
                 </div>

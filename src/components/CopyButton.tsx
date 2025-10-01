@@ -35,7 +35,7 @@ export default function CopyButton({
       setCopied(true)
       if (timer.current) window.clearTimeout(timer.current)
       timer.current = window.setTimeout(() => setCopied(false), 1200)
-    } catch (e) {
+    } catch (e: unknown) {
       // Fallback: select & copy via textarea if clipboard API fails
       const ta = document.createElement('textarea')
       ta.value = text
