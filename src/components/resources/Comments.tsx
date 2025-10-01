@@ -25,8 +25,8 @@ export default function Comments({
   resourceId: string
   slug: string
   comments: CommentItem[]
-  createAction: (formData: FormData) => Promise<any>
-  deleteAction: (formData: FormData) => Promise<any>
+  createAction: (formData: FormData) => Promise<void>
+  deleteAction: (formData: FormData) => Promise<void>
 }) {
   const count = comments?.length ?? 0
 
@@ -63,7 +63,7 @@ function CommentForm({
 }: {
   resourceId: string
   slug: string
-  action: (formData: FormData) => Promise<any>
+  action: (formData: FormData) => Promise<void>
   minLength?: number
   maxLength?: number
 }) {
@@ -127,7 +127,7 @@ function CommentsList({
 }: {
   items: CommentItem[]
   slug: string
-  deleteAction: (formData: FormData) => Promise<any>
+  deleteAction: (formData: FormData) => Promise<void>
 }) {
   return (
     <ul className="mt-4 space-y-3">
@@ -137,7 +137,7 @@ function CommentsList({
             <div className="min-w-0 flex-1">
               <p className="whitespace-pre-wrap text-sm text-gray-900">{c.body}</p>
               <div className="mt-1 text-[11px] text-gray-500">
-                <time dateTime={c.created_at}>{new Date(c.created_at as any).toLocaleString()}</time>
+                <time dateTime={c.created_at}>{new Date(c.created_at).toLocaleString()}</time>
               </div>
             </div>
             <DeleteOwnComment commentId={c.id} slug={slug} action={deleteAction} />
@@ -156,7 +156,7 @@ function DeleteOwnComment({
 }: {
   commentId: string
   slug: string
-  action: (formData: FormData) => Promise<any>
+  action: (formData: FormData) => Promise<void>
 }) {
   'use client'
   const onSubmit = React.useCallback((e: React.FormEvent<HTMLFormElement>) => {
