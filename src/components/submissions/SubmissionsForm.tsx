@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation'
 import { submissionSchema } from '@/lib/validation/submission'
 import { slugify } from '@/lib/slug'
 
+export type Pricing = 'unknown' | 'free' | 'freemium' | 'trial' | 'paid'
+
 export type SimpleOption = { id: string; name: string; slug: string }
 
 export default function SubmissionForm({
@@ -23,7 +25,7 @@ export default function SubmissionForm({
   const [title, setTitle] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [categoryId, setCategoryId] = React.useState('')
-  const [pricing, setPricing] = React.useState<'unknown' | 'free' | 'freemium' | 'trial' | 'paid'>('unknown')
+  const [pricing, setPricing] = React.useState<Pricing>('unknown')
   const [tagSlugs, setTagSlugs] = React.useState<string[]>([])
   const [logoUrl, setLogoUrl] = React.useState<string>('')
   const [contactEmail, setContactEmail] = React.useState<string>(userEmail || '')
@@ -76,8 +78,8 @@ export default function SubmissionForm({
         if (res.data?.description && !description) setDescription(res.data.description)
         if (res.data?.favicon && !logoUrl) setLogoUrl(res.data.favicon)
       }
-    } catch (e: any) {
-      setMetaError(e?.message ?? 'Failed to fetch metadata')
+    } catch (e: unknown) {
+      setMetaError(e instanceof Error ? e.message : 'Failed to fetch metadata')
     } finally {
       setMetaLoading(false)
     }
@@ -95,8 +97,8 @@ export default function SubmissionForm({
       } else if (res.url) {
         setLogoUrl(res.url)
       }
-    } catch (e: any) {
-      setUploadError(e?.message ?? 'Upload failed')
+    } catch (e: unknown) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setUploading(false)
     }
@@ -112,7 +114,6 @@ export default function SubmissionForm({
 
   // Let the server action handle validation; capture its field errors via form action callback
   const formRef = React.useRef<HTMLFormElement>(null)
-  const [submitting, startSubmit] = (React as any).useTransition?.() ?? [false, (fn: any) => fn()]
 
   async function clientSubmit(formData: FormData) {
     setServerErrors(null)
@@ -128,7 +129,6 @@ export default function SubmissionForm({
   const inputClass = (hasError?: boolean) =>
     `mt-1 w-full rounded-xl border px-3 py-2 ${hasError ? 'border-red-500 focus:outline-red-600' : ''}`
 
-  const hasErrors = Object.keys(errors).length > 0
 
   return (
     <form
@@ -224,7 +224,7 @@ export default function SubmissionForm({
           <label className="block text-sm font-medium">Pricing</label>
           <select
             value={pricing}
-            onChange={(e) => setPricing(e.target.value as any)}
+            onChange={(e) => setPricing(e.target.value as Pricing)}
             className="mt-1 w-full rounded-xl border px-3 py-2"
           >
             <option value="unknown">Unknown</option>
