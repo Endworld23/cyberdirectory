@@ -9,10 +9,8 @@ import ResourceFilters from '@/components/filters/ResourceFilters'
 
 export const dynamic = 'force-dynamic'
 
-const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
-
 export async function generateMetadata(): Promise<Metadata> {
-  const title = 'All Resources â€” Cyber Directory'
+  const title = 'All Resources — Cyber Directory'
   const description = 'Browse the full directory of submitted cybersecurity resources.'
   const canonical = '/resources'
   return {
@@ -24,14 +22,6 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-type SearchParams = {
-  size?: string
-  q?: string
-  category?: string
-  tag?: string
-  sort?: string
-}
-
 const getParam = (value: string | string[] | undefined): string => {
   if (Array.isArray(value)) {
     return value[0] ?? '';
@@ -41,10 +31,8 @@ const getParam = (value: string | string[] | undefined): string => {
 
 
 export default async function ResourcesPage({
-  params: _params,
   searchParams,
 }: {
-  params: Record<string, string | undefined>;
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const s = await createClientServer()
@@ -79,8 +67,13 @@ export default async function ResourcesPage({
   if (tagSlug) {
     const { data: tag } = await s.from('tags').select('id,slug').ilike('slug', tagSlug).maybeSingle()
     if (tag?.id) {
-      const { data: links } = await s.from('resource_tags').select('resource_id').eq('tag_id', tag.id)
-      const ids = (links ?? []).map((link) => link.resource_id as string)
+      const { data: links } = await s
+        .from('resource_tags')
+        .select('resource_id')
+        .eq('tag_id', tag.id)
+
+      const linkRows = (links ?? []) as Array<{ resource_id: string }>
+      const ids = linkRows.map((l) => l.resource_id)
       if (ids.length > 0) {
         query = query.in('id', ids)
       } else {
@@ -93,10 +86,16 @@ export default async function ResourcesPage({
   // Text search / fallback
   if (qParam) {
     const like = qParam.replace(/%/g, '')
-    // @ts-ignore allow textSearch when available
-    if (typeof (query as any).textSearch === 'function') {
-      // @ts-ignore
-      query = (query as any).textSearch('search_vec', qParam, { type: 'websearch' })
+    // Attempt textSearch when available; otherwise fallback to ILIKE
+    const maybe = query as unknown as {
+      textSearch?: (
+        column: string,
+        search: string,
+        options?: { type?: 'websearch' | 'plain' | 'phrase' }
+      ) => typeof query
+    }
+    if (typeof maybe.textSearch === 'function') {
+      query = maybe.textSearch('search_vec', qParam, { type: 'websearch' })
     } else {
       query = query.or(`title.ilike.%${like}%,description.ilike.%${like}%`)
     }
@@ -138,16 +137,18 @@ export default async function ResourcesPage({
 
   const { data: auth } = await s.auth.getUser()
   const user = auth?.user ?? null
-  let votedIds = new Set<string>()
-  let savedIds = new Set<string>()
+  const votedIds = new Set<string>()
+  const savedIds = new Set<string>()
   if (user && rows.length > 0) {
     const ids = rows.map((r) => r.id)
     const [myVotes, mySaves] = await Promise.all([
       s.from('votes').select('resource_id').eq('user_id', user.id).in('resource_id', ids),
       s.from('saves').select('resource_id').eq('user_id', user.id).in('resource_id', ids),
     ])
-    for (const v of myVotes.data ?? []) votedIds.add((v as any).resource_id as string)
-    for (const sv of mySaves.data ?? []) savedIds.add((sv as any).resource_id as string)
+    const myVotesRows = (myVotes.data ?? []) as Array<{ resource_id: string }>
+    const mySavesRows = (mySaves.data ?? []) as Array<{ resource_id: string }>
+    for (const v of myVotesRows) votedIds.add(v.resource_id)
+    for (const sv of mySavesRows) savedIds.add(sv.resource_id)
   }
 
   const sizeHref = (n: number) => {
@@ -170,7 +171,7 @@ export default async function ResourcesPage({
           <nav className="mt-1 text-xs text-gray-600">
             <span aria-current="page" className="mr-3 font-medium text-gray-900">All</span>
             <Link className="underline mr-3" href="/resources/trending">Trending</Link>
-            <Link className="underline mr-3" href="/resources/top">Allâ€‘time</Link>
+            <Link className="underline mr-3" href="/resources/top">All‑time</Link>
             <Link className="underline mr-3" href="/resources/top/weekly">Weekly</Link>
             <Link className="underline" href="/resources/top/monthly">Monthly</Link>
           </nav>
@@ -235,10 +236,10 @@ export default async function ResourcesPage({
                           'rounded-md border px-2 py-1 text-xs ' +
                           (hasVoted ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
                         }
-                        pendingText={hasVoted ? 'Removingâ€¦' : 'Votingâ€¦'}
+                        pendingText={hasVoted ? 'Removing…' : 'Voting…'}
                         title={hasVoted ? 'Remove vote' : 'Vote for this resource'}
                       >
-                        â–² {hasVoted ? 'Voted' : 'Vote'}
+                        ▲ {hasVoted ? 'Voted' : 'Vote'}
                       </PendingButton>
                     </form>
                     <form action={toggleSaveAction}>
@@ -251,10 +252,10 @@ export default async function ResourcesPage({
                           'rounded-md border px-2 py-1 text-xs ' +
                           (hasSaved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white hover:bg-gray-50')
                         }
-                        pendingText={hasSaved ? 'Removingâ€¦' : 'Savingâ€¦'}
+                        pendingText={hasSaved ? 'Removing…' : 'Saving…'}
                         title={hasSaved ? 'Remove from saves' : 'Save this resource'}
                       >
-                        â˜† {hasSaved ? 'Saved' : 'Save'}
+                        ★ {hasSaved ? 'Saved' : 'Save'}
                       </PendingButton>
                     </form>
                   </div>

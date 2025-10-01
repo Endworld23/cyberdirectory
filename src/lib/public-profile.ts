@@ -86,45 +86,46 @@ export async function getPublicActivityForUser(userId: string, arg: number | Pub
     excludeDeleted: opts.resourceFilter?.excludeDeleted ?? true,
   };
 
-  // Issue the selected queries in parallel
-  const promises: Array<Promise<any>> = [];
-  if (include.comments) {
-    promises.push((async () => {
-      return await sb
+  // Issue the selected queries in parallel with explicit typing (no any)
+  type CommentRowLite = { id: string; created_at: string; resource_id: string | null };
+  type SubmissionRowLite = { id: string; created_at: string; resource_id: string | null };
+  type VoteRowLite = { id: string; created_at: string; resource_id: string | null };
+
+  const commentsPromise = include.comments
+    ? sb
         .from('comments')
         .select('id, created_at, resource_id')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false })
-        .limit(limit);
-    })());
-  } else promises.push(Promise.resolve({ data: [], error: null }));
+        .limit(limit)
+    : Promise.resolve({ data: [] as CommentRowLite[], error: null });
 
-  if (include.submissions) {
-    promises.push((async () => {
-      return await sb
+  const subsPromise = include.submissions
+    ? sb
         .from('submissions')
         .select('id, created_at, resource_id')
         .eq('user_id', userId)
         .eq('is_deleted', false)
         .eq('status', 'approved') // adjust if your column differs
         .order('created_at', { ascending: false })
-        .limit(limit);
-    })());
-  } else promises.push(Promise.resolve({ data: [], error: null }));
+        .limit(limit)
+    : Promise.resolve({ data: [] as SubmissionRowLite[], error: null });
 
-  if (include.votes) {
-    promises.push((async () => {
-      return await sb
+  const votesPromise = include.votes
+    ? sb
         .from('votes')
         .select('id, created_at, resource_id')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(limit);
-    })());
-  } else promises.push(Promise.resolve({ data: [], error: null }));
+        .limit(limit)
+    : Promise.resolve({ data: [] as VoteRowLite[], error: null });
 
-  let [commentsQ, subsQ, votesQ] = await Promise.all(promises);
+  const [commentsQ, subsQ, votesQ] = await Promise.all([
+    commentsPromise,
+    subsPromise,
+    votesPromise,
+  ] as const);
 
   // If any query fails due to RLS or network, default to empty list
   if (commentsQ?.error || subsQ?.error || votesQ?.error) {
@@ -147,11 +148,12 @@ export async function getPublicActivityForUser(userId: string, arg: number | Pub
   // Optionally filter resources when resolving (approved / not deleted)
   const resourcesMap = new Map<string, { title: string; slug: string }>();
   if (resIds.length) {
+    type ResourceMeta = { id: string; title: string; slug: string };
     let query = sb.from('resources').select('id, title, slug').in('id', resIds);
     if (rFilter.excludeDeleted) query = query.eq('is_deleted', false);
-    if (rFilter.onlyApproved) query = query.eq('status', 'approved' as any);
+    if (rFilter.onlyApproved) query = query.eq('status', 'approved');
     const { data: rs } = await query;
-    (rs ?? []).forEach((r: any) => resourcesMap.set(r.id, { title: r.title, slug: r.slug }));
+    ((rs ?? []) as ResourceMeta[]).forEach((r) => resourcesMap.set(r.id, { title: r.title, slug: r.slug }));
   }
 
   // Merge, sort desc, cap to limit, and attach resource meta
@@ -163,7 +165,7 @@ export async function getPublicActivityForUser(userId: string, arg: number | Pub
     .sort((a, b) => (a.created_at > b.created_at ? -1 : 1))
     .slice(0, limit)
     .map((i) => {
-      const rid = 'resource_id' in i ? (i as any).resource_id : null;
+      const rid = (i as { resource_id?: string | null }).resource_id ?? null;
       if (rid && resourcesMap.has(rid)) {
         const r = resourcesMap.get(rid)!;
         return { ...i, resource_title: r.title, resource_slug: r.slug };
