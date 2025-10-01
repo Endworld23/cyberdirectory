@@ -8,12 +8,6 @@ import { ResourceCard } from '@/components/ResourceCard'
 export const dynamic = 'force-dynamic'
 
 /* ------------------ Types ------------------ */
-interface TagRow {
-  id: string
-  slug: string
-  name: string | null
-  description?: string | null
-}
 
 interface ResourceRow {
   id: string
@@ -71,21 +65,21 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 /* ------------------ Page ------------------ */
-export default async function TagPage(props: { params: { slug: string }; searchParams?: Promise<SearchParams> }) {
+export default async function TagPage({ params, searchParams }: { params: { slug: string }; searchParams?: Record<string, string | string[] | undefined> }) {
   const s = await createClientServer()
-  const { slug } = props.params
-  const searchParams = (props.searchParams ? await props.searchParams : {}) as SearchParams
+  const { slug } = params
+  const sp = (searchParams ?? {}) as SearchParams
 
   // Normalize inputs
-  const qParam = (Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q ?? '').trim()
-  const sortParam = (Array.isArray(searchParams.sort) ? searchParams.sort[0] : searchParams.sort) as
+  const qParam = (Array.isArray(sp.q) ? sp.q[0] : sp.q ?? '').trim()
+  const sortParam = (Array.isArray(sp.sort) ? sp.sort[0] : sp.sort) as
     | 'trending'
     | 'new'
     | 'top'
     | undefined
   const sort = sortParam ?? 'trending'
 
-  const pageNum = Number(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page ?? '1') || 1
+  const pageNum = Number(Array.isArray(sp.page) ? sp.page[0] : sp.page ?? '1') || 1
   const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -149,10 +143,15 @@ export default async function TagPage(props: { params: { slug: string }; searchP
   // 4) Search — prefer textSearch('search_vec', ...) when available; fallback to ilike on title/description
   if (qParam) {
     const like = qParam.replace(/%/g, '')
-    // @ts-ignore – next-supabase types may not expose textSearch on the builder type
-    if (typeof (query as any).textSearch === 'function') {
-      // @ts-ignore
-      query = (query as any).textSearch('search_vec', qParam, { type: 'websearch' })
+    const maybe = query as unknown as {
+      textSearch?: (
+        column: string,
+        search: string,
+        options?: { type?: 'websearch' | 'plain' | 'phrase' }
+      ) => typeof query
+    }
+    if (typeof maybe.textSearch === 'function') {
+      query = maybe.textSearch('search_vec', qParam, { type: 'websearch' })
     } else {
       query = query.or(`title.ilike.%${like}%,description.ilike.%${like}%`)
     }
@@ -175,7 +174,7 @@ export default async function TagPage(props: { params: { slug: string }; searchP
   const { data: rows, error: rErr, count } = await query.range(from, to)
   if (rErr) throw new Error(rErr.message)
 
-  const list: ResourceRow[] = (rows ?? []) as any
+  const list = (rows ?? []) as ResourceRow[]
   const total = count ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
