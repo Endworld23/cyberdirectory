@@ -3,6 +3,24 @@
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
 
+// Minimal shape of a submission row we rely on in admin actions
+type SubmissionRow = {
+  id: string
+  title: string
+  description: string | null
+  url: string
+  logo_url: string | null
+  pricing: string | null
+  slug: string | null
+  category_id: string | null
+  category_slug: string | null
+  tag_slugs: string[] | null
+  tags: string[] | null
+}
+
+// Minimal tag row shape used when linking tags
+type TagRow = { id: string; slug: string }
+
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -52,20 +70,21 @@ export async function approveSubmission(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   if (!id) throw new Error('Missing submission id')
 
-  const { data: sub, error: e0 } = await s
+  const { data: subRaw, error: e0 } = await s
     .from('submissions')
     .select('*')
     .eq('id', id)
     .single()
   if (e0) throw e0
+  const sub = subRaw as SubmissionRow | null
   if (!sub) throw new Error('Submission not found')
 
   // Prefer an existing submission.slug if present; otherwise derive from title
-  const baseSlug = (sub as any).slug || sub.title || 'item'
+  const baseSlug = sub.slug ?? sub.title ?? 'item'
 
   // Category: accept either category_id directly or upsert by category_slug
-  let category_id: string | null = (sub as any).category_id ?? null
-  const incomingCategorySlug: string | null = (sub as any).category_slug ?? null
+  let category_id: string | null = sub.category_id ?? null
+  const incomingCategorySlug: string | null = sub.category_slug ?? null
 
   if (!category_id && incomingCategorySlug) {
     const { data: cat, error: e1 } = await s
@@ -78,10 +97,10 @@ export async function approveSubmission(formData: FormData) {
   }
 
   // Tags: accept either tag_slugs (string[]) or tags (text[])
-  const rawTagSlugs: string[] = Array.isArray((sub as any).tag_slugs)
-    ? (sub as any).tag_slugs
-    : Array.isArray((sub as any).tags)
-    ? (sub as any).tags
+  const rawTagSlugs: string[] = Array.isArray(sub.tag_slugs)
+    ? sub.tag_slugs!
+    : Array.isArray(sub.tags)
+    ? sub.tags!
     : []
   const finalTags = rawTagSlugs.map((t: string) => slugify(String(t)))
 
@@ -110,8 +129,9 @@ export async function approveSubmission(formData: FormData) {
       .select('id,slug')
     if (e3) throw e3
 
-    if (tags?.length) {
-      const rows = tags.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
+    const tagRows = (tags ?? []) as TagRow[]
+    if (tagRows.length) {
+      const rows = tagRows.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
       const { error: e4 } = await s.from('resource_tags').insert(rows)
       if (e4) throw e4
     }
@@ -158,22 +178,23 @@ export async function approveWithEdits(formData: FormData) {
   const tagsRaw = (formData.get('tags') as string | null) || ''
   const tag_slugs = tagsRaw
     .split(',')
-    .map(s => s.trim().toLowerCase().replace(/\s+/g, '-'))
+    .map((token: string) => token.trim().toLowerCase().replace(/\s+/g, '-'))
     .filter(Boolean)
 
   // If some required edited fields are blank, load original to fill
-  const { data: sub, error: e0 } = await s
+  const { data: subRaw, error: e0 } = await s
     .from('submissions')
     .select('*')
     .eq('id', id)
     .single()
   if (e0) throw e0
+  const sub = subRaw as SubmissionRow | null
   if (!sub) throw new Error('Submission not found')
 
-  const baseSlug = (sub as any).slug || title || 'item'
+  const baseSlug = sub.slug ?? title ?? 'item'
 
-  const finalCategorySlug = (category_slug || (sub as any).category_slug || null) as string | null
-  let category_id: string | null = (sub as any).category_id ?? null
+  const finalCategorySlug: string | null = category_slug || sub.category_slug || null
+  let category_id: string | null = sub.category_id ?? null
   if (!category_id && finalCategorySlug) {
     const { data: cat, error: e1 } = await s
       .from('categories')
@@ -186,10 +207,10 @@ export async function approveWithEdits(formData: FormData) {
 
   const finalTags: string[] = (tag_slugs.length
     ? tag_slugs
-    : Array.isArray((sub as any).tag_slugs)
-    ? (sub as any).tag_slugs
-    : Array.isArray((sub as any).tags)
-    ? (sub as any).tags
+    : Array.isArray(sub.tag_slugs)
+    ? sub.tag_slugs!
+    : Array.isArray(sub.tags)
+    ? sub.tags!
     : [])
     .map((t: string) => slugify(String(t)))
 
@@ -198,7 +219,7 @@ export async function approveWithEdits(formData: FormData) {
   const finalTitle = title || sub.title
   const finalUrl = url || sub.url
   const finalDesc = description ?? sub.description
-  const finalPricing = (pricing as string) || sub.pricing || 'unknown'
+  const finalPricing = pricing || sub.pricing || 'unknown'
   const finalLogo = logo_url || sub.logo_url || null
 
   const { data: res, error: e2 } = await s
@@ -224,8 +245,9 @@ export async function approveWithEdits(formData: FormData) {
       .select('id,slug')
     if (e3) throw e3
 
-    if (tags?.length) {
-      const rows = tags.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
+    const tagRows = (tags ?? []) as TagRow[]
+    if (tagRows.length) {
+      const rows = tagRows.map((t) => ({ resource_id: res!.id, tag_id: t.id }))
       const { error: e4 } = await s.from('resource_tags').insert(rows)
       if (e4) throw e4
     }
