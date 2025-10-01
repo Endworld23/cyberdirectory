@@ -3,6 +3,7 @@
 /* cspell:ignore supabase */
 import { useEffect, useMemo, useState } from 'react';
 import { createClientBrowser } from '@/lib/supabase-browser';
+import Link from 'next/link';
 
 type Pricing = 'unknown' | 'free' | 'freemium' | 'trial' | 'paid';
 
@@ -213,9 +214,9 @@ export default function SubmitPage() {
               {dup.type === 'resource' ? (
                 <div>
                   This site is already listed:&nbsp;
-                  <a href={`/resources/${dup.slug}`} className="underline">
+                  <Link href={`/resources/${dup.slug}`} className="underline">
                     {dup.title}
-                  </a>
+                  </Link>
                 </div>
               ) : (
                 <div>
@@ -318,3 +319,4 @@ export default function SubmitPage() {
     </section>
   );
 }
+

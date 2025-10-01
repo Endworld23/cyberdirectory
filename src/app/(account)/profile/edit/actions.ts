@@ -1,7 +1,6 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
 
@@ -16,12 +15,15 @@ type MutableCookie = {
   httpOnly?: boolean;
 };
 
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
 const COOLDOWN_COOKIE = 'cd_resend_ts'
 const COOLDOWN_MS = 60_000
 
 export async function resendVerificationAction() {
   const sb = await createClientServer()
-  const jar = cookies() as unknown as ReadonlyRequestCookies & { set?: (cookie: MutableCookie) => void };
+  const jar = cookies() as unknown as CookieStore;
+  const writable = 'set' in jar ? (jar as CookieStore & { set: (cookie: MutableCookie) => void }) : null;
 
   const last = jar.get(COOLDOWN_COOKIE)?.value
   const now = Date.now()
@@ -40,7 +42,7 @@ export async function resendVerificationAction() {
 
   try {
     await sb.auth.resend({ type: 'signup', email })
-    jar.set?.({
+    writable?.set({
       name: COOLDOWN_COOKIE,
       value: String(now),
       path: '/account/profile',
@@ -54,3 +56,8 @@ export async function resendVerificationAction() {
 
   revalidatePath('/account/profile/edit')
 }
+
+
+
+
+

@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
 
 type CookieRecord = {
   name: string;
@@ -13,8 +12,12 @@ type CookieRecord = {
   httpOnly?: boolean;
 };
 
-export const createClientServer = async () => {
-  const cookieStore = cookies() as unknown as ReadonlyRequestCookies;
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+type WritableCookiesStore = CookieStore & { set: (options: CookieRecord) => void };
+type SupabaseServerClient = ReturnType<typeof createServerClient>;
+
+export const createClientServer = (): SupabaseServerClient => {
+  const jar = cookies() as unknown as CookieStore;
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,13 +25,13 @@ export const createClientServer = async () => {
     {
       cookies: {
         getAll() {
-          const entries = cookieStore.getAll();
-          return entries.map(({ name, value }): { name: string; value: string } => ({ name, value }));
+          const entries = jar.getAll();
+          return entries.map(({ name, value }) => ({ name, value }));
         },
-        setAll(cookiesToSet) {
-          type SettableCookieStore = ReadonlyRequestCookies & { set: (options: CookieRecord) => void };
-          const writable = cookieStore as unknown as SettableCookieStore;
-          for (const cookie of cookiesToSet as CookieRecord[]) {
+        setAll(cookiesToSet: CookieRecord[]) {
+          if (!('set' in jar)) return;
+          const writable = jar as WritableCookiesStore;
+          for (const cookie of cookiesToSet) {
             writable.set(cookie);
           }
         },
@@ -36,3 +39,4 @@ export const createClientServer = async () => {
     }
   );
 };
+

@@ -3,7 +3,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies'
 import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import VoteWidget from '@/components/VoteWidget'
@@ -12,9 +11,8 @@ import Comments from '@/components/resources/Comments'
 import { createCommentAction, deleteCommentAction } from '@/app/resources/[slug]/actions'
 import RelatedGrid, { type RelatedItem } from '@/components/resources/RelatedGrid'
 import CopyButton from '@/components/CopyButton'
-
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
 export const dynamic = 'force-dynamic'
-
 type ResourceRow = {
   id: string
   slug: string
@@ -27,23 +25,18 @@ type ResourceRow = {
   category_id: string | null
   created_at: string | null
 }
-
 type TagRow = { id: string; slug: string; name: string }
 type Category = { slug: string; name: string } | null
 type Params = { slug: string }
-
 type ResourceLite = { id: string; title: string; slug: string }
 type RelatedRow = (RelatedItem & { pricing: ResourceRow['pricing'] | null })
-
 // Small helper
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
-
 /* ------------------ Metadata ------------------ */
 export async function generateMetadata(
   { params }: { params: Params }
 ): Promise<Metadata> {
   const { slug } = params
-
   const s = await createClientServer()
   const { data } = await s
     .from('resources')
@@ -51,11 +44,9 @@ export async function generateMetadata(
     .eq('slug', slug)
     .eq('is_approved', true)
     .single()
-
   const title = data?.title ? `${data.title} - Cyber Directory` : 'Resource - Cyber Directory'
   const description = data?.description ?? 'Explore cybersecurity resources curated by the community.'
   const ogImage = data?.logo_url || `${site}/og-default.png`
-
   return {
     title,
     description,
@@ -75,10 +66,7 @@ export async function generateMetadata(
     },
   }
 }
-
 /* ------------------ Page ------------------ */
-
-
 export default async function ResourceBySlug({
   params,
   searchParams: _searchParams,
@@ -87,10 +75,9 @@ export default async function ResourceBySlug({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const { slug } = params
-  const jar = cookies() as unknown as ReadonlyRequestCookies;
+  const jar = cookies() as unknown as CookieStore;
   const theme = jar.get('theme')?.value === 'dark' ? 'dark' : 'light';
   const s = await createClientServer()
-
   // Load resource
   const { data: r, error } = await s
     .from('resources')
@@ -99,7 +86,6 @@ export default async function ResourceBySlug({
     .eq('is_approved', true)
     .single<ResourceRow>()
   if (error || !r) return notFound()
-
   // Load category (optional)
   let category: Category = null
   if (r.category_id) {
@@ -110,15 +96,12 @@ export default async function ResourceBySlug({
       .single()
     category = c ?? null
   }
-
   // Load tags
   const { data: rt } = await s
     .from('resource_tags')
     .select('tag_id')
     .eq('resource_id', r.id)
-
   const tagIds: string[] = (rt ?? []).map(x => x.tag_id as string)
-
   let tags: TagRow[] = []
   if (tagIds.length) {
     const { data: tagRows } = await s
@@ -128,7 +111,6 @@ export default async function ResourceBySlug({
       .order('name', { ascending: true })
     tags = (tagRows ?? []) as TagRow[]
   }
-
   // Saved?
   const { data: auth } = await s.auth.getUser()
   let initialSaved = false
@@ -141,7 +123,6 @@ export default async function ResourceBySlug({
       .maybeSingle()
     initialSaved = !!sv
   }
-
   // Related resources (share at least one tag, exclude current)
   let related: RelatedRow[] = []
   if (tagIds.length) {
@@ -150,7 +131,6 @@ export default async function ResourceBySlug({
       .select('resource_id')
       .in('tag_id', tagIds)
       .neq('resource_id', r.id)
-
     const relatedIds = Array.from(new Set((rows1 ?? []).map(x => x.resource_id as string)))
     if (relatedIds.length) {
       const { data: rows2 } = await s
@@ -160,18 +140,15 @@ export default async function ResourceBySlug({
         .eq('is_approved', true)
         .order('created_at', { ascending: false })
         .limit(6)
-
       related = (rows2 ?? []) as RelatedRow[]
     }
   }
-
   // Load comments (simple list; backend join to profiles can come later)
   const { data: comments } = await s
     .from('comments')
     .select('id, user_id, body, created_at')
     .eq('resource_id', r.id)
     .order('created_at', { ascending: false })
-
   // Share links
   const shareUrl = `${site}/resources/${r.slug}`
   const share = {
@@ -179,7 +156,6 @@ export default async function ResourceBySlug({
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
     email: `mailto:?subject=${encodeURIComponent(r.title)}&body=${encodeURIComponent(shareUrl)}`,
   }
-
   // JSON-LD (CreativeWork for this resource page)
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -196,13 +172,11 @@ export default async function ResourceBySlug({
     datePublished: r.created_at ? new Date(r.created_at).toISOString() : undefined,
     isAccessibleForFree: true,
   }
-
   let faviconUrl: string | null = null
   try {
     const host = new URL(r.url).hostname
     faviconUrl = `https://www.google.com/s2/favicons?domain=${host}&sz=64`
   } catch {}
-
   return (
     <main data-theme={theme} className="mx-auto max-w-5xl space-y-8 p-6">
       <header className="flex items-start justify-between gap-4">
@@ -227,7 +201,6 @@ export default async function ResourceBySlug({
             ) : null}
             <h1 className="text-2xl font-bold truncate">{r.title}</h1>
           </div>
-
           {/* Meta chips */}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="rounded-full border px-2 py-0.5 text-xs text-gray-600">
@@ -256,28 +229,32 @@ export default async function ResourceBySlug({
               </span>
             )}
           </div>
-
           {r.description && <p className="text-gray-700 line-clamp-6">{r.description}</p>}
-
           <div className="flex items-center gap-2">
-            <a href={`/go/${r.id}`} rel="noreferrer" className="inline-block rounded-md bg-black px-4 py-2 text-white">
+            <Link href={`/go/${r.id}`} className="inline-block rounded-md bg-black px-4 py-2 text-white">
               Visit Site
-            </a>
+            </Link>
             <SaveButton resourceId={r.id} initialSaved={initialSaved} />
           </div>
         </div>
-
         {/* Votes */}
         <VoteWidget resourceId={r.id} />
       </header>
-
       {/* Share row */}
       <section className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-gray-600" aria-hidden>Share:</span>
-        <a href={share.twitter} target="_blank" rel="noreferrer" className="underline text-blue-600">Twitter</a>
-        <a href={share.linkedin} target="_blank" rel="noreferrer" className="underline text-blue-600">LinkedIn</a>
-        <a href={share.email} rel="noreferrer" className="underline text-blue-600">Email</a>
-        <a href="#comments" className="underline text-gray-700">Jump to comments</a>
+        <a href={share.twitter} target="_blank" rel="noreferrer" className="underline text-blue-600">
+          Twitter
+        </a>
+        <a href={share.linkedin} target="_blank" rel="noreferrer" className="underline text-blue-600">
+          LinkedIn
+        </a>
+        <a href={share.email} rel="noreferrer" className="underline text-blue-600">
+          Email
+        </a>
+        <Link href="#comments" className="underline text-gray-700">
+          Jump to comments
+        </Link>
         <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
           <input
             readOnly
@@ -288,9 +265,7 @@ export default async function ResourceBySlug({
           <CopyButton text={shareUrl} title="Copy link" />
         </div>
       </section>
-
       <div id="comments" />
-
       {/* Comments */}
       <Comments
         resourceId={r.id}
@@ -299,25 +274,23 @@ export default async function ResourceBySlug({
         createAction={createCommentAction}
         deleteAction={deleteCommentAction}
       />
-
       {/* Related */}
       <RelatedGrid
         items={related}
         renderActions={(item) => {
           const resource: ResourceLite = { id: item.id, title: item.title, slug: item.slug }
           return (
-            <a
+            <Link
               href={`/go/${resource.id}`}
-              rel="noreferrer"
+             
               className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
               title="Visit site"
             >
               Visit
-            </a>
+            </Link>
           )
         }}
       />
-
       {/* JSON-LD */}
       <script
         type="application/ld+json"
@@ -327,3 +300,8 @@ export default async function ResourceBySlug({
     </main>
   )
 }
+
+
+
+
+

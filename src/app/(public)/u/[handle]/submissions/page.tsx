@@ -49,7 +49,14 @@ interface ResourceRow {
 // ---------------------------------------------
 // Page
 // ---------------------------------------------
-export default async function PublicProfileSubmissionsPage({ params }: { params: { handle: string } }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: { handle: string };
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
+  void searchParams
   const handle = params.handle
   const s = await createClientServer()
 
@@ -162,3 +169,4 @@ export default async function PublicProfileSubmissionsPage({ params }: { params:
     </main>
   )
 }
+

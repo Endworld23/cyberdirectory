@@ -21,13 +21,14 @@ async function requireUser() {
 }
 
 // ---- Page ----
-export default async function DeleteAccountPage({
-  params: _params,
+export default async function Page({
+  params,
   searchParams,
 }: {
   params: Record<string, string | undefined>;
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  void params;
   const { sb, user } = await requireUser();
 
   const { data: profile, error: pErr } = await sb
@@ -81,6 +82,7 @@ export default async function DeleteAccountPage({
           <div className="flex items-center gap-3">
             <button
               type="submit"
+              title="You can't undo this"
               className="rounded-md border border-red-600 bg-red-600 px-4 py-2 text-white shadow-sm hover:brightness-110"
             >
               Permanently delete my account
@@ -92,3 +94,4 @@ export default async function DeleteAccountPage({
     </div>
   );
 }
+

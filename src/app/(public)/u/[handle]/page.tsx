@@ -67,6 +67,14 @@ type VoteRow = {
   } | null
 }
 
+type CommentRowRaw = Omit<CommentRow, 'resources'> & {
+  resources: CommentRow['resources'] | CommentRow['resources'][] | null
+}
+
+type VoteRowRaw = Omit<VoteRow, 'resources'> & {
+  resources: VoteRow['resources'] | VoteRow['resources'][] | null
+}
+
 type ActivityItem =
   | (SubmissionLite & { kind: 'submission'; resource_id: string })
   | {
@@ -126,11 +134,13 @@ export default async function Page({
   const handle = params.handle
   const supabase = await createClientServer()
 
-  const { data: profile, error: profileError } = await supabase
+  const { data: profileData, error: profileError } = await supabase
     .from('profiles')
-    .select<PublicProfile>('id, handle, display_name, bio, avatar_url, created_at')
+    .select('id, handle, display_name, bio, avatar_url, created_at')
     .ilike('handle', handle)
     .maybeSingle()
+
+  const profile = profileData as PublicProfile | null
 
   if (profileError) throw new Error(profileError.message)
   if (!profile) return notFound()
@@ -138,27 +148,37 @@ export default async function Page({
   const [submissionRes, commentRes, voteRes] = await Promise.all([
     supabase
       .from('resources')
-      .select<SubmissionLite>('id, slug, title, logo_url, created_at')
+      .select('id, slug, title, logo_url, status, created_at')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('comments')
-      .select<CommentRow>('id, resource_id, body, created_at, resources!inner(id, slug, title, logo_url)')
+      .select('id, resource_id, body, created_at, resources!inner(id, slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('votes')
-      .select<VoteRow>('id, resource_id, created_at, resources!inner(id, slug, title, logo_url)')
+      .select('id, resource_id, created_at, resources!inner(id, slug, title, logo_url)')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
   ])
 
-  const submissions = submissionRes.data ?? []
-  const comments = commentRes.data ?? []
-  const votes = voteRes.data ?? []
+  const submissions = (submissionRes.data ?? []) as SubmissionLite[]
+  const rawComments = (commentRes.data ?? []) as CommentRowRaw[]
+  const rawVotes = (voteRes.data ?? []) as VoteRowRaw[]
+
+  const comments: CommentRow[] = rawComments.map((comment) => ({
+    ...comment,
+    resources: Array.isArray(comment.resources) ? comment.resources[0] ?? null : comment.resources,
+  }))
+
+  const votes: VoteRow[] = rawVotes.map((vote) => ({
+    ...vote,
+    resources: Array.isArray(vote.resources) ? vote.resources[0] ?? null : vote.resources,
+  }))
 
   const submissionsCount = submissions.length
   const commentsCount = comments.length
@@ -309,3 +329,12 @@ export default async function Page({
     </main>
   )
 }
+
+
+
+
+
+
+
+
+

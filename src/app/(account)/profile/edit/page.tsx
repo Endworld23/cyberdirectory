@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClientServer } from '@/lib/supabase-server';
 import { cookies } from 'next/headers';
-import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension/adapters/request-cookies';
 import { resendVerificationAction } from '@/app/(account)/profile/edit/actions';
 import EditProfileForm from '../EditProfileForm';
 
@@ -9,6 +8,14 @@ import Link from 'next/link';
 import AccountNav from '../_components/AccountNav';
 
 import type { Metadata } from 'next'
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
+type ProfileMeta = {
+  display_name?: string | null;
+  avatar_url?: string | null;
+  email_confirmed_at?: string | null;
+  email_verified?: boolean;
+} | null;
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -51,13 +58,15 @@ export default async function EditProfilePage() {
 
   const supabaseUser = auth.user;
   const email = supabaseUser.email ?? null;
-  const userMeta = (supabaseUser.user_metadata ?? {}) as { email_confirmed_at?: string | null; email_verified?: boolean };
-  const emailConfirmedAt = (supabaseUser as { email_confirmed_at?: string | null }).email_confirmed_at ??
-    (userMeta.email_confirmed_at ?? (userMeta.email_verified ? new Date().toISOString() : null));
+  const rawMeta = supabaseUser.user_metadata;
+  const profileMeta: ProfileMeta = rawMeta && typeof rawMeta === "object" ? (rawMeta as ProfileMeta) : null;
+  const emailConfirmedAt = supabaseUser.email_confirmed_at ??
+    profileMeta?.email_confirmed_at ??
+    (profileMeta?.email_verified ? new Date().toISOString() : null);
   const isVerified = Boolean(emailConfirmedAt);
 
   // Read resend cooldown from cookie
-  const cookieJar = cookies() as unknown as ReadonlyRequestCookies;
+  const cookieJar = cookies() as unknown as CookieStore;
   const last = cookieJar.get('cd_resend_ts')?.value;
   const now = Date.now();
   const lastMs = last ? Number(last) : 0;
@@ -101,3 +110,6 @@ export default async function EditProfilePage() {
     </div>
   );
 }
+
+
+
