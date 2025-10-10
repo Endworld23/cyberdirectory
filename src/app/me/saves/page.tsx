@@ -46,6 +46,11 @@ type Row = {
   trending_score?: number | null
 }
 
+type SaveRow = { resource_id: string | null; created_at: string }
+
+type TextSearchOptions = { type?: 'plain' | 'phrase' | 'websearch' }
+type TextSearchable<T> = { textSearch: (column: string, query: string, options?: TextSearchOptions) => T }
+
 export default async function SavedResourcesPage({ searchParams }: { searchParams?: SearchParams }) {
   const sp = (searchParams ?? {}) as SearchParams
   const s = await createClientServer()
@@ -86,10 +91,10 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
 
   // Unique IDs, preserving recent-first order
   const seen = new Set<string>();
-  const resourceIds = (savesRows ?? [])
-    .map(r => r.resource_id as string)
-    .filter(Boolean)
-    .filter(id => (seen.has(id) ? false : (seen.add(id), true)));
+  const resourceIds = ((savesRows ?? []) as SaveRow[])
+    .map((r) => r.resource_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
 
   if (resourceIds.length === 0) {
     return (
@@ -116,11 +121,11 @@ export default async function SavedResourcesPage({ searchParams }: { searchParam
 
   // Search (tsvector websearch if available; fallback to ilike)
   if (q) {
-    const anyQuery = query as any;
-    if (typeof anyQuery.textSearch === 'function') {
-      query = anyQuery.textSearch('search_vec', q, { type: 'websearch' });
+    const maybeTS = query as unknown as Partial<TextSearchable<typeof query>>
+    if (maybeTS && 'textSearch' in maybeTS && typeof maybeTS.textSearch === 'function') {
+      query = maybeTS.textSearch('search_vec', q, { type: 'websearch' })
     } else {
-      query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
+      query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`)
     }
   }
 

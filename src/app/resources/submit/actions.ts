@@ -5,19 +5,12 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClientServer } from '@/lib/supabase-server'
 import { slugify } from '@/lib/slug'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // --- helpers --------------------------------------------------------------
-function toSlug(input: string) {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-}
 
-async function ensureUniqueResourceSlug(supabase: any, base: string) {
-  let slug = slugify(base) || 'resource'
+async function ensureUniqueResourceSlug(supabase: SupabaseClient, base: string) {
+  const slug = slugify(base) || 'resource'
   let suffix = 0
   // Check against resources and submissions (in case you surface slugs there too)
   // Stop after a reasonable number of attempts
@@ -31,12 +24,6 @@ async function ensureUniqueResourceSlug(supabase: any, base: string) {
     suffix += 1
   }
   return `${slug}-${Date.now()}`
-}
-
-function pick<T extends Record<string, any>>(obj: T, keys: (keyof T)[]) {
-  const out: any = {}
-  for (const k of keys) out[k as string] = obj[k]
-  return out
 }
 
 function parseTags(value: FormDataEntryValue | null): string[] {
@@ -115,7 +102,7 @@ export async function submitResourceAction(formData: FormData) {
 }
 
 export async function fetchUrlMetadataAction(rawUrl: string) {
-  const supabase = await createClientServer() // keep parity with auth/rate limiting later
+  const _supabase = await createClientServer() // keep parity with auth/rate limiting later
   // Basic normalization & guard
   let target: URL
   try {
@@ -147,8 +134,9 @@ export async function fetchUrlMetadataAction(rawUrl: string) {
     }
 
     return { ok: true, data: { title, description, favicon } }
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? 'Failed to fetch metadata' }
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Failed to fetch metadata'
+    return { ok: false, error: message }
   }
 }
 

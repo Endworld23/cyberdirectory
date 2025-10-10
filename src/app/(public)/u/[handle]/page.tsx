@@ -17,13 +17,6 @@ type PublicProfile = {
   created_at: string | null
 }
 
-type ResourceLite = {
-  id: string
-  title: string
-  slug: string
-  logo_url?: string | null
-  affiliate_url?: string | null
-}
 
 type SubmissionLite = {
   id: string
@@ -34,13 +27,6 @@ type SubmissionLite = {
   status?: 'pending' | 'approved' | 'rejected' | null
 }
 
-type ReviewLite = {
-  id: string
-  rating: number
-  body: string | null
-  created_at: string
-  resource_id: string
-}
 
 type CommentRow = {
   id: string

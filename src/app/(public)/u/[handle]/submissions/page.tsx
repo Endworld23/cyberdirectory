@@ -5,6 +5,7 @@ import EmptyState from '@/components/EmptyState'
 import { ResourceCard } from '@/components/ResourceCard'
 import { createClientServer } from '@/lib/supabase-server'
 import type { Metadata } from 'next'
+import type { SupabaseClient } from '@supabase/supabase-js'
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
@@ -58,14 +59,14 @@ export default async function Page({
 }) {
   void searchParams
   const handle = params.handle
-  const s = await createClientServer()
+  const s = (await createClientServer()) as SupabaseClient
 
   // 1) Load the profile by handle
   const { data: profile, error: pErr } = await s
     .from('profiles')
     .select('id, handle, display_name, avatar_url')
     .ilike('handle', handle)
-    .maybeSingle()
+    .maybeSingle<Profile>()
 
   if (pErr) throw new Error(pErr.message)
   if (!profile) return notFound()

@@ -11,6 +11,7 @@ import Comments from '@/components/resources/Comments'
 import { createCommentAction, deleteCommentAction } from '@/app/resources/[slug]/actions'
 import RelatedGrid, { type RelatedItem } from '@/components/resources/RelatedGrid'
 import CopyButton from '@/components/CopyButton'
+import type { SupabaseClient } from '@supabase/supabase-js'
 type CookieStore = Awaited<ReturnType<typeof cookies>>;
 export const dynamic = 'force-dynamic'
 type ResourceRow = {
@@ -30,6 +31,8 @@ type Category = { slug: string; name: string } | null
 type Params = { slug: string }
 type ResourceLite = { id: string; title: string; slug: string }
 type RelatedRow = (RelatedItem & { pricing: ResourceRow['pricing'] | null })
+type ResourceTagRow = { tag_id: string | null }
+type ResourceIdRow = { resource_id: string | null }
 // Small helper
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 /* ------------------ Metadata ------------------ */
@@ -37,7 +40,7 @@ export async function generateMetadata(
   { params }: { params: Params }
 ): Promise<Metadata> {
   const { slug } = params
-  const s = await createClientServer()
+  const s = (await createClientServer()) as SupabaseClient
   const { data } = await s
     .from('resources')
     .select('title, description, slug, logo_url, created_at')
@@ -75,9 +78,9 @@ export default async function ResourceBySlug({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const { slug } = params
-  const jar = cookies() as unknown as CookieStore;
+  const jar = (await cookies()) as CookieStore;
   const theme = jar.get('theme')?.value === 'dark' ? 'dark' : 'light';
-  const s = await createClientServer()
+  const s = (await createClientServer()) as SupabaseClient
   // Load resource
   const { data: r, error } = await s
     .from('resources')
@@ -101,7 +104,9 @@ export default async function ResourceBySlug({
     .from('resource_tags')
     .select('tag_id')
     .eq('resource_id', r.id)
-  const tagIds: string[] = (rt ?? []).map(x => x.tag_id as string)
+  const tagIds: string[] = ((rt ?? []) as ResourceTagRow[])
+    .map((row) => row.tag_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
   let tags: TagRow[] = []
   if (tagIds.length) {
     const { data: tagRows } = await s
@@ -131,7 +136,13 @@ export default async function ResourceBySlug({
       .select('resource_id')
       .in('tag_id', tagIds)
       .neq('resource_id', r.id)
-    const relatedIds = Array.from(new Set((rows1 ?? []).map(x => x.resource_id as string)))
+    const relatedIds = Array.from(
+      new Set(
+        ((rows1 ?? []) as ResourceIdRow[])
+          .map((row) => row.resource_id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+    )
     if (relatedIds.length) {
       const { data: rows2 } = await s
         .from('resources')
@@ -300,8 +311,3 @@ export default async function ResourceBySlug({
     </main>
   )
 }
-
-
-
-
-

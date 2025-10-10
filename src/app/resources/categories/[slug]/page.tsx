@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClientServer } from '@/lib/supabase-server'
 import EmptyState from '@/components/EmptyState'
 import { ResourceCard } from '@/components/ResourceCard'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const title = `Category: ${params.slug} — Cyber Directory`
@@ -49,7 +50,7 @@ interface ResourceRow {
 
 type SearchParams = { q?: string; sort?: string; page?: string }
 export default async function CategoryPage({ params, searchParams }: { params: { slug: string }, searchParams: SearchParams }) {
-  const s = await createClientServer()
+  const s = (await createClientServer()) as SupabaseClient
   const catSlug = params.slug
 
   const qParam = (searchParams?.q ?? '').trim()
@@ -72,7 +73,7 @@ export default async function CategoryPage({ params, searchParams }: { params: {
     .from('categories')
     .select('id, slug, name, description')
     .ilike('slug', catSlug)
-    .maybeSingle()
+    .maybeSingle<CategoryRow>()
 
   if (cErr) throw new Error(cErr.message)
   if (!category) return notFound()
@@ -112,7 +113,7 @@ export default async function CategoryPage({ params, searchParams }: { params: {
   const { data: rows, error: rErr, count } = await query.range(from, to)
   if (rErr) throw new Error(rErr.message)
   const total = count ?? 0
-  const list: ResourceRow[] = (rows ?? []) as any
+  const list: ResourceRow[] = (rows ?? []) as ResourceRow[]
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (

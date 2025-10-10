@@ -29,7 +29,7 @@ export default function CopyButton({
     }
   }, [])
 
-  async function onClick() {
+  async function onClick(_e: React.MouseEvent<HTMLButtonElement>) {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)

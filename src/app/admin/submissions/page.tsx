@@ -7,7 +7,7 @@ import { approveSubmission, rejectSubmission, approveWithEdits } from './actions
 import PendingButton from '@/components/PendingButton'
 import EmptyState from '@/components/EmptyState'
 import type { Metadata } from 'next'
-const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+const _site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export const dynamic = 'force-dynamic'
 

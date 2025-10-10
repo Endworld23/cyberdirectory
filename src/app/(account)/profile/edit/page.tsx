@@ -16,7 +16,7 @@ type ProfileMeta = {
   email_confirmed_at?: string | null;
   email_verified?: boolean;
 } | null;
-const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
+const _site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 
 export async function generateMetadata(): Promise<Metadata> {
   const title = 'Edit profile — Cyber Directory'
