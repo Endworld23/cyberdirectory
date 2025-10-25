@@ -6,7 +6,7 @@ const schema = z.object({ commentId: z.string().uuid() });
 
 export const runtime = 'nodejs';
 
-async function isAdminEmail(s: ReturnType<typeof createClientServer> extends Promise<infer T> ? T : never) {
+async function isAdminEmail(s: ReturnType<typeof createClientServer>) {
   const { data: auth } = await s.auth.getUser();
   const email = auth?.user?.email ?? null;
   if (!email) return false;
@@ -15,7 +15,7 @@ async function isAdminEmail(s: ReturnType<typeof createClientServer> extends Pro
 }
 
 export async function POST(req: NextRequest) {
-  const s = await createClientServer();
+  const s = createClientServer();
 
   if (!(await isAdminEmail(s))) {
     return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });

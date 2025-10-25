@@ -79,7 +79,7 @@ function cleanPricing(p: unknown): Pricing {
 }
 
 export async function POST(req: NextRequest) {
-  const s = await createClientServer()
+  const s = createClientServer()
 
   // Parse JSON
   let raw: unknown
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
       .from('categories')
       .select('slug')
       .eq('id', body.category_id.trim())
-      .maybeSingle<{ slug: string }>()
+      .maybeSingle()
     if (cat?.slug) category_slug = slugify(cat.slug)
   }
 

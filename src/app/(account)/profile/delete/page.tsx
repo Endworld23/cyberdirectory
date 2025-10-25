@@ -14,21 +14,18 @@ export const dynamic = 'force-dynamic';
 
 // ---- Server helpers ----
 async function requireUser() {
-  const sb = await createClientServer();
+  const sb = createClientServer();
   const { data, error } = await sb.auth.getUser();
   if (error || !data?.user) redirect('/login?next=/profile/delete');
   return { sb, user: data.user };
 }
 
 // ---- Page ----
-export default async function Page({
-  params,
-  searchParams,
-}: {
-  params: Record<string, string | undefined>;
-  searchParams: Record<string, string | string[] | undefined>;
+export default async function Page(props: {
+  params: Promise<Record<string, string | undefined>>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  void params;
+  const searchParams = await props.searchParams;
   const { sb, user } = await requireUser();
 
   const { data: profile, error: pErr } = await sb

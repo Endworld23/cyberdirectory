@@ -12,7 +12,7 @@ function cdata(s: string) {
 }
 
 export async function GET() {
-  const s = await createClientServer()
+  const s = createClientServer()
 
   const { data, error } = await s
     .from('resources')
@@ -28,7 +28,7 @@ export async function GET() {
   const now = new Date()
 
   const items = (data ?? [])
-    .map((r) => {
+    .map((r: { slug: string; title: string; description: string | null; created_at: string }) => {
       const link = `${site}/resources/${r.slug}`
       const pub = r.created_at ? new Date(r.created_at) : now
       const desc = r.description ? cdata(r.description) : ''

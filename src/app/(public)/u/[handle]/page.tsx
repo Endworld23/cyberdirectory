@@ -85,7 +85,8 @@ type ActivityItem =
 
 const ACTIVITY_LIMIT = 20
 
-export async function generateMetadata({ params }: { params: { handle: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ handle: string }> }): Promise<Metadata> {
+  const params = await props.params;
   const handle = params.handle
   const title = `@${handle} — Profile — Cyber Directory`
   const description = `Public profile for @${handle} on Cyber Directory.`
@@ -108,17 +109,13 @@ function fmtDate(dt?: string | null) {
   }
 }
 
-export default async function Page({
-  params,
-  searchParams,
-}: {
-  params: { handle: string };
-  searchParams: Record<string, string | string[] | undefined>;
+export default async function Page(props: {
+  params: Promise<{ handle: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  void searchParams
-
+  const params = await props.params;
   const handle = params.handle
-  const supabase = await createClientServer()
+  const supabase = createClientServer()
 
   const { data: profileData, error: profileError } = await supabase
     .from('profiles')
@@ -181,7 +178,7 @@ export default async function Page({
       resource_id: submission.id,
       slug: submission.slug,
       title: submission.title,
-      logo_url: submission.logo_url ?? undefined,
+      logo_url: submission.logo_url ?? null,
       status: submission.status ?? null,
     })
   }
@@ -197,7 +194,7 @@ export default async function Page({
       slug: resource.slug,
       title: resource.title,
       body: comment.body ?? '',
-      logo_url: resource.logo_url ?? undefined,
+      logo_url: resource.logo_url ?? null,
     })
   }
 
@@ -211,7 +208,7 @@ export default async function Page({
       resource_id: vote.resource_id,
       slug: resource.slug,
       title: resource.title,
-      logo_url: resource.logo_url ?? undefined,
+      logo_url: resource.logo_url ?? null,
     })
   }
 

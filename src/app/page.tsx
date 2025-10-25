@@ -6,7 +6,7 @@ import SearchBox from '@/components/SearchBox'   // <-- add
 export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
-  const s = await createClientServer()
+  const s = createClientServer()
 
   const [{ data: latest }, { data: cats }] = await Promise.all([
     s.from('resources')
@@ -43,7 +43,7 @@ export default async function HomePage() {
           </Link>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(cats ?? []).map((c) => (
+          {(cats ?? []).map((c: { slug: string; name: string }) => (
             <Link key={c.slug} href={`/categories/${c.slug}`} className="rounded-full border px-3 py-1 text-sm hover:bg-gray-50">
               #{c.name}
             </Link>
@@ -61,7 +61,7 @@ export default async function HomePage() {
           </div>
         ) : (
           <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {latest!.map((r) => (
+            {latest!.map((r: { id: string; slug: string; title: string; description: string | null; logo_url: string | null; created_at: string }) => (
               <li key={r.id} className="rounded-xl border p-4 hover:shadow">
                 <Link href={`/resources/${r.slug}`} className="block">
                   {r.logo_url && (

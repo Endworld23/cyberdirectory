@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "supabase.supabase-vscode",
+    "ms-azuretools.vscode-docker",
+    "github.copilot",
+    "usernamehw.errorlens"
+  ]
+}

@@ -1,7 +1,4 @@
-/* Tailwind v3 directives MUST come first */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* --- Your design tokens (kept) --- */
 :root {

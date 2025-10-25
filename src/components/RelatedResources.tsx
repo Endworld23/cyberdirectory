@@ -12,7 +12,7 @@ export default async function RelatedResources({
   tagIds: string[]
   categoryId?: string | null
 }) {
-  const s = await createClientServer()
+  const s = createClientServer()
 
   // Collect candidate IDs from shared tags, then same category as a fallback
   const candidates = new Set<string>()
@@ -60,7 +60,7 @@ export default async function RelatedResources({
     <section className="space-y-3">
       <h2 className="text-lg font-medium">Related resources</h2>
       <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {rows.map((r) => (
+        {rows.map((r: { id: string; slug: string; title: string; description: string | null; logo_url: string | null; pricing: string | null; votes_count: number | null; comments_count: number | null }) => (
           <li key={r.id} className="rounded-xl border p-4 hover:shadow">
             <Link href={`/resources/${r.slug}`} className="block">
               {r.logo_url && (

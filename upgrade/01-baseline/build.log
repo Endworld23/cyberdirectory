@@ -1,0 +1,33 @@
+
+> cyberdirectory@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.2
+   - Environments: .env
+
+   Creating an optimized production build ...
+Failed to compile.
+
+next-app-loader?page=%2F_not-found%2Fpage&name=app%2F_not-found%2Fpage&pagePath=%2Ftmp%2Fcc-agent%2F59213707%2Fproject%2Fnode_modules%2Fnext%2Fdist%2Fclient%2Fcomponents%2Fbuiltin%2Fglobal-not-found.js&appDir=%2Ftmp%2Fcc-agent%2F59213707%2Fproject%2Fsrc%2Fapp&appPaths=%2Ftmp%2Fcc-agent%2F59213707%2Fproject%2Fnode_modules%2Fnext%2Fdist%2Fclient%2Fcomponents%2Fbuiltin%2Fglobal-not-found&pageExtensions=tsx&pageExtensions=ts&pageExtensions=jsx&pageExtensions=js&basePath=&assetPrefix=&nextConfigOutput=&preferredRegion=&middlewareConfig=e30%3D&isGlobalNotFoundEnabled=!:57
+Error: Image import "next-metadata-image-loader?type=favicon&segment=&basePath=&pageExtensions=tsx&pageExtensions=ts&pageExtensions=jsx&pageExtensions=js!/tmp/cc-agent/59213707/project/src/app/favicon.ico?__next_metadata__" is not a valid image file. The image may be corrupted or an unsupported format.
+
+
+> Build failed because of webpack errors
+
+> cyberdirectory@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.2
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 13.8s
+   Linting and checking validity of types ...
+Failed to compile.
+
+src/app/(account)/profile/delete/page.tsx
+Type error: Type '{ params: Record<string, string | undefined>; searchParams: Record<string, string | string[] | undefined>; }' does not satisfy the constraint 'PageProps'.
+  Types of property 'params' are incompatible.
+    Type 'Record<string, string | undefined>' is missing the following properties from type 'Promise<any>': then, catch, finally, [Symbol.toStringTag]
+
+Next.js build worker exited with code: 1 and signal: null

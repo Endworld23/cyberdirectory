@@ -36,11 +36,12 @@ type ResourceIdRow = { resource_id: string | null }
 // Small helper
 const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')
 /* ------------------ Metadata ------------------ */
-export async function generateMetadata(
-  { params }: { params: Params }
-): Promise<Metadata> {
+export async function generateMetadata(props: {
+  params: Promise<Params>;
+}): Promise<Metadata> {
+  const params = await props.params;
   const { slug } = params
-  const s = (await createClientServer()) as SupabaseClient
+  const s = createClientServer() as SupabaseClient
   const { data } = await s
     .from('resources')
     .select('title, description, slug, logo_url, created_at')
@@ -70,17 +71,15 @@ export async function generateMetadata(
   }
 }
 /* ------------------ Page ------------------ */
-export default async function ResourceBySlug({
-  params,
-  searchParams: _searchParams,
-}: {
-  params: Params;
-  searchParams: Record<string, string | string[] | undefined>;
+export default async function ResourceBySlug(props: {
+  params: Promise<Params>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const params = await props.params;
   const { slug } = params
   const jar = (await cookies()) as CookieStore;
   const theme = jar.get('theme')?.value === 'dark' ? 'dark' : 'light';
-  const s = (await createClientServer()) as SupabaseClient
+  const s = createClientServer() as SupabaseClient
   // Load resource
   const { data: r, error } = await s
     .from('resources')
