@@ -51,9 +51,10 @@ type SaveRow = { resource_id: string | null; created_at: string }
 type TextSearchOptions = { type?: 'plain' | 'phrase' | 'websearch' }
 type TextSearchable<T> = { textSearch: (column: string, query: string, options?: TextSearchOptions) => T }
 
-export default async function SavedResourcesPage({ searchParams }: { searchParams?: SearchParams }) {
+export default async function SavedResourcesPage(props: { searchParams: Promise<SearchParams> }) {
+  const searchParams = await props.searchParams;
   const sp = (searchParams ?? {}) as SearchParams
-  const s = await createClientServer()
+  const s = createClientServer()
 
   // Require auth
   const { data: auth } = await s.auth.getUser()

@@ -1,0 +1,26 @@
+
+> cyberdirectory@0.1.0 build
+> next build
+
+   ▲ Next.js 16.0.0 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 12.3s
+   Running TypeScript ...
+Failed to compile.
+
+./src/app/resources/categories/[slug]/page.tsx:172:18
+Type error: Type '{ id: string; slug: string; title: string; description: string | undefined; url: string | undefined; logo_url: string | undefined; created_at: string | undefined; stats: { votes: number; comments: number; }; actions: Element; }' is not assignable to type 'ResourceCardProps' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'url' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string | null'.
+      Type 'undefined' is not assignable to type 'string | null'.
+
+[0m [90m 170 |[39m             {list[33m.[39mmap((r) [33m=>[39m (
+ [90m 171 |[39m               [33m<[39m[33mli[39m key[33m=[39m{r[33m.[39mid}[33m>[39m
+[31m[1m>[22m[39m[90m 172 |[39m                 [33m<[39m[33mResourceCard[39m
+ [90m     |[39m                  [31m[1m^[22m[39m
+ [90m 173 |[39m                   id[33m=[39m{r[33m.[39mid}
+ [90m 174 |[39m                   slug[33m=[39m{r[33m.[39mslug}
+ [90m 175 |[39m                   title[33m=[39m{r[33m.[39mtitle}[0m
+Next.js build worker exited with code: 1 and signal: null

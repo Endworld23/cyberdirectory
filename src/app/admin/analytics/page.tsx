@@ -17,7 +17,7 @@ type ClickRowRaw = {
 }
 
 export default async function AdminAnalyticsPage() {
-  const s = await createClientServer()
+  const s = createClientServer()
 
   // Top overall from view (clicks, votes, comments)
   const { data: adminStats, error: e2 } = await s
@@ -52,7 +52,8 @@ export default async function AdminAnalyticsPage() {
       : (nested?.title ?? 'Unknown')
 
     if (!agg[row.resource_id]) agg[row.resource_id] = { title, clicks: 0 }
-    agg[row.resource_id].clicks += 1
+    const entry = agg[row.resource_id];
+    if (entry) entry.clicks += 1
   }
 
   const topClicksRows = Object.entries(agg)

@@ -10,7 +10,8 @@ const site = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').repla
 
 export const dynamic = 'force-dynamic'
 
-export async function generateMetadata({ params }: { params: { handle: string } }): Promise<Metadata> {
+export async function generateMetadata(props: { params: Promise<{ handle: string }> }): Promise<Metadata> {
+  const params = await props.params;
   const handle = params.handle
   const title = `@${handle} — Submissions — Cyber Directory`
   const description = `Latest resources submitted by @${handle}.`
@@ -50,16 +51,13 @@ interface ResourceRow {
 // ---------------------------------------------
 // Page
 // ---------------------------------------------
-export default async function Page({
-  params,
-  searchParams,
-}: {
-  params: { handle: string };
-  searchParams: Record<string, string | string[] | undefined>;
+export default async function Page(props: {
+  params: Promise<{ handle: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  void searchParams
+  const params = await props.params;
   const handle = params.handle
-  const s = (await createClientServer()) as SupabaseClient
+  const s = createClientServer() as SupabaseClient
 
   // 1) Load the profile by handle
   const { data: profile, error: pErr } = await s
@@ -125,10 +123,10 @@ export default async function Page({
                 id={r.id}
                 slug={r.slug}
                 title={r.title}
-                description={r.description ?? undefined}
-                url={r.url ?? undefined}
-                logo_url={r.logo_url ?? undefined}
-                created_at={r.created_at ?? undefined}
+                description={r.description}
+                url={r.url}
+                logo_url={r.logo_url}
+                created_at={r.created_at}
                 stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                 actions={
                   <a

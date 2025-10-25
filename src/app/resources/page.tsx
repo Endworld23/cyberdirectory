@@ -30,12 +30,11 @@ const getParam = (value: string | string[] | undefined): string => {
 };
 
 
-export default async function ResourcesPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
+export default async function ResourcesPage(props: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const s = await createClientServer()
+  const searchParams = await props.searchParams;
+  const s = createClientServer()
 
   const sizeParam = getParam(searchParams.size) || '10'
   const sizeRaw = Number(sizeParam.trim())
@@ -194,9 +193,9 @@ export default async function ResourcesPage({
       </header>
       <div className="mt-4">
         <ResourceFilters
-          initialQ={getParam(searchParams.q) || undefined}
-          initialCategory={getParam(searchParams.category) || undefined}
-          initialTag={getParam(searchParams.tag) || undefined}
+          initialQ={getParam(searchParams.q) || ''}
+          initialCategory={getParam(searchParams.category) || ''}
+          initialTag={getParam(searchParams.tag) || ''}
           initialSort={sort}
         />
       </div>
@@ -219,10 +218,10 @@ export default async function ResourcesPage({
                 id={r.id}
                 slug={r.slug}
                 title={r.title}
-                description={r.description ?? undefined}
-                url={r.url ?? undefined}
-                logo_url={r.logo_url ?? undefined}
-                created_at={r.created_at ?? undefined}
+                description={r.description ?? null}
+                url={r.url ?? null}
+                logo_url={r.logo_url ?? null}
+                created_at={r.created_at ?? null}
                 stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                 actions={
                   <div className="flex items-center gap-2">

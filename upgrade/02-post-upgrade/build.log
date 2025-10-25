@@ -1,0 +1,31 @@
+
+> cyberdirectory@0.1.0 build
+> next build
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+   ▲ Next.js 16.0.0 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 2 errors:
+./src/app
+An issue occurred while preparing your Next.js app
+Conflicting route and metadata at /robots.txt: route at /robots.txt/route and metadata at /robots.txt/route
+
+
+./src/app/favicon.ico
+Processing image failed
+unable to decode image data
+
+Caused by:
+- Format error decoding Ico: ICO image entry has too many color planes or too large hotspot value
+- ICO image entry has too many color planes or too large hotspot value
+
+
+    at ignore-listed frames
