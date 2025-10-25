@@ -61,10 +61,10 @@ export default function RelatedGrid({
                 id={r.id}
                 slug={r.slug}
                 title={r.title}
-                description={r.description ?? undefined}
-                url={r.url ?? undefined}
-                logo_url={r.logo_url ?? undefined}
-                created_at={r.created_at ?? undefined}
+                description={r.description ?? null}
+                url={r.url ?? null}
+                logo_url={r.logo_url ?? null}
+                created_at={r.created_at ?? null}
                 stats={{
                   votes: r.votes_count ?? 0,
                   comments: r.comments_count ?? 0,

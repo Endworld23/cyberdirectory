@@ -66,20 +66,20 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 /* ------------------ Page ------------------ */
 export default async function TagPage({ params, searchParams }: { params: { slug: string }; searchParams?: Record<string, string | string[] | undefined> }) {
-  const s = await createClientServer()
+  const s = createClientServer()
   const { slug } = params
   const sp = (searchParams ?? {}) as SearchParams
 
   // Normalize inputs
-  const qParam = (Array.isArray(sp.q) ? sp.q[0] : sp.q ?? '').trim()
-  const sortParam = (Array.isArray(sp.sort) ? sp.sort[0] : sp.sort) as
+  const qParam = (Array.isArray(sp.q) ? (sp.q[0] ?? '') : (sp.q ?? '')).trim()
+  const sortParam = (Array.isArray(sp.sort) ? (sp.sort[0] ?? undefined) : sp.sort) as
     | 'trending'
     | 'new'
     | 'top'
     | undefined
   const sort = sortParam ?? 'trending'
 
-  const pageNum = Number(Array.isArray(sp.page) ? sp.page[0] : sp.page ?? '1') || 1
+  const pageNum = Number(Array.isArray(sp.page) ? (sp.page[0] ?? '1') : (sp.page ?? '1')) || 1
   const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
@@ -255,10 +255,10 @@ export default async function TagPage({ params, searchParams }: { params: { slug
                   id={r.id}
                   slug={r.slug}
                   title={r.title}
-                  description={r.description ?? undefined}
-                  url={r.url ?? undefined}
-                  logo_url={r.logo_url ?? undefined}
-                  created_at={r.created_at ?? undefined}
+                  description={r.description ?? null}
+                  url={r.url ?? null}
+                  logo_url={r.logo_url ?? null}
+                  created_at={r.created_at ?? null}
                   stats={{ votes: r.votes_count ?? 0, comments: r.comments_count ?? 0 }}
                   actions={
                     <Link

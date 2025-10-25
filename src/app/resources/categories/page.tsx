@@ -50,17 +50,17 @@ type CategoryRow = {
 
 /* ------------------ Page ------------------ */
 export default async function CategoriesIndexPage(props: { searchParams?: Promise<Search> }) {
-  const s = await createClientServer()
-  const searchParams = (props.searchParams ? await props.searchParams : {}) as Search
+  const s = createClientServer()
+  const searchParams = props.searchParams ? await props.searchParams : {}
 
-  const qParam = (Array.isArray(searchParams.q) ? searchParams.q[0] : searchParams.q ?? '').trim()
-  const sortParam = (Array.isArray(searchParams.sort) ? searchParams.sort[0] : searchParams.sort) as
+  const qParam = (Array.isArray(searchParams.q) ? (searchParams.q[0] ?? '') : (searchParams.q ?? '')).trim()
+  const sortParam = (Array.isArray(searchParams.sort) ? (searchParams.sort[0] ?? undefined) : searchParams.sort) as
     | 'popular'
     | 'name'
     | undefined
   const sort = sortParam ?? 'popular'
 
-  const pageNum = Number(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page ?? '1') || 1
+  const pageNum = Number(Array.isArray(searchParams.page) ? (searchParams.page[0] ?? '1') : (searchParams.page ?? '1')) || 1
   const page = Math.max(1, pageNum)
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1

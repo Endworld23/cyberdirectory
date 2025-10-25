@@ -116,10 +116,10 @@ export async function fetchUrlMetadataAction(rawUrl: string) {
     const html = await res.text()
 
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
-    const title = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : ''
+    const title = titleMatch?.[1] ? titleMatch[1].trim().replace(/\s+/g, ' ') : ''
     const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]*>/i)
-    const descContentMatch = descMatch?.[0].match(/content=["']([\s\S]*?)["']/i)
-    const description = descContentMatch ? descContentMatch[1].trim() : ''
+    const descContentMatch = descMatch?.[0]?.match(/content=["']([\s\S]*?)["']/i)
+    const description = descContentMatch?.[1] ? descContentMatch[1].trim() : ''
     // try common favicon rels
     const iconMatch =
       html.match(/<link[^>]+rel=["'](?:shortcut icon|icon)["'][^>]*>/i) ||
